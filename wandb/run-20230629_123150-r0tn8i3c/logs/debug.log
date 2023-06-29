@@ -1,0 +1,63 @@
+2023-06-29 12:31:50,242 INFO    MainThread:94546 [wandb_setup.py:_flush():76] Current SDK version is 0.15.4
+2023-06-29 12:31:50,242 INFO    MainThread:94546 [wandb_setup.py:_flush():76] Configure stats pid to 94546
+2023-06-29 12:31:50,243 INFO    MainThread:94546 [wandb_setup.py:_flush():76] Loading settings from /home/zhongpc/.config/wandb/settings
+2023-06-29 12:31:50,243 INFO    MainThread:94546 [wandb_setup.py:_flush():76] Loading settings from /home/zhongpc/cdvae/wandb/settings
+2023-06-29 12:31:50,243 INFO    MainThread:94546 [wandb_setup.py:_flush():76] Loading settings from environment variables: {}
+2023-06-29 12:31:50,243 INFO    MainThread:94546 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2023-06-29 12:31:50,243 INFO    MainThread:94546 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program_relpath': 'cdvae/run.py', 'program': '/home/zhongpc/cdvae/cdvae/run.py'}
+2023-06-29 12:31:50,243 INFO    MainThread:94546 [wandb_init.py:_log_setup():507] Logging user logs to ./wandb/run-20230629_123150-r0tn8i3c/logs/debug.log
+2023-06-29 12:31:50,243 INFO    MainThread:94546 [wandb_init.py:_log_setup():508] Logging internal logs to ./wandb/run-20230629_123150-r0tn8i3c/logs/debug-internal.log
+2023-06-29 12:31:50,244 INFO    MainThread:94546 [wandb_init.py:init():547] calling init triggers
+2023-06-29 12:31:50,244 INFO    MainThread:94546 [wandb_init.py:init():554] wandb.init called with sweep_config: {}
+config: {}
+2023-06-29 12:31:50,245 INFO    MainThread:94546 [wandb_init.py:init():596] starting backend
+2023-06-29 12:31:50,245 INFO    MainThread:94546 [wandb_init.py:init():600] setting up manager
+2023-06-29 12:31:50,500 ERROR   MainThread:94546 [wandb_init.py:init():1180] error
+Traceback (most recent call last):
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/wandb/sdk/wandb_init.py", line 1152, in init
+    run = wi.init()
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/wandb/sdk/wandb_init.py", line 601, in init
+    manager._inform_init(settings=self.settings, run_id=self.settings.run_id)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/wandb/sdk/wandb_manager.py", line 208, in _inform_init
+    svc_iface._svc_inform_init(settings=settings, run_id=run_id)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/wandb/sdk/service/service_sock.py", line 35, in _svc_inform_init
+    _pbmap_apply_dict(inform_init._settings_map, settings_dict)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/wandb/sdk/service/service_base.py", line 40, in _pbmap_apply_dict
+    if all(isinstance(x, str) for x in v):  # Iterable[str]
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/wandb/sdk/service/service_base.py", line 40, in <genexpr>
+    if all(isinstance(x, str) for x in v):  # Iterable[str]
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/listconfig.py", line 547, in __next__
+    x = x._dereference_node()
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/base.py", line 246, in _dereference_node
+    node = self._dereference_node_impl(throw_on_resolution_failure=True)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/base.py", line 277, in _dereference_node_impl
+    return parent._resolve_interpolation_from_parse_tree(
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/base.py", line 584, in _resolve_interpolation_from_parse_tree
+    resolved = self.resolve_parse_tree(
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/base.py", line 764, in resolve_parse_tree
+    return visitor.visit(parse_tree)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/antlr4/tree/Tree.py", line 34, in visit
+    return tree.accept(self)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/grammar/gen/OmegaConfGrammarParser.py", line 206, in accept
+    return visitor.visitConfigValue(self)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/grammar_visitor.py", line 101, in visitConfigValue
+    return self.visit(ctx.getChild(0))
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/antlr4/tree/Tree.py", line 34, in visit
+    return tree.accept(self)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/grammar/gen/OmegaConfGrammarParser.py", line 342, in accept
+    return visitor.visitText(self)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/grammar_visitor.py", line 298, in visitText
+    return self.visitInterpolation(c)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/grammar_visitor.py", line 125, in visitInterpolation
+    return self.visit(ctx.getChild(0))
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/antlr4/tree/Tree.py", line 34, in visit
+    return tree.accept(self)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/grammar/gen/OmegaConfGrammarParser.py", line 1041, in accept
+    return visitor.visitInterpolationResolver(self)
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/grammar_visitor.py", line 179, in visitInterpolationResolver
+    return self.resolver_interpolation_callback(
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/base.py", line 750, in resolver_interpolation_callback
+    return self._evaluate_custom_resolver(
+  File "/home/zhongpc/anaconda3/envs/cdvae/lib/python3.9/site-packages/omegaconf/base.py", line 702, in _evaluate_custom_resolver
+    raise UnsupportedInterpolationType(
+omegaconf.errors.UnsupportedInterpolationType: Unsupported interpolation type now

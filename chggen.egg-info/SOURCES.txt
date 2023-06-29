@@ -1,0 +1,7 @@
+LICENSE
+README.md
+setup.py
+chggen.egg-info/PKG-INFO
+chggen.egg-info/SOURCES.txt
+chggen.egg-info/dependency_links.txt
+chggen.egg-info/top_level.txt
