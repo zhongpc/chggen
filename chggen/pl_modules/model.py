@@ -1,5 +1,4 @@
 from typing import Any, Dict
-
 import hydra
 import numpy as np
 import omegaconf
@@ -9,6 +8,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch_scatter import scatter
 from tqdm import tqdm
+from omegaconf import OmegaConf
 
 from chggen.common.utils import PROJECT_ROOT
 from chggen.common.data_utils import (
@@ -18,29 +18,45 @@ from chggen.pl_modules.embeddings import MAX_ATOMIC_NUM
 from chggen.pl_modules.embeddings import KHOT_EMBEDDINGS
 
 from chggen.pl_modules.encoder import CHGNet_encoder
+from chggen.pl_modules.decoder import GemNetTDecoder
 
 class CHGGen(nn.Module):
     def __init__(self, 
                  latent_dim: int = 64,
-                 hidden_dim: int = 256,
+                 hidden_dim: int = 128,
                  load_pretrain: bool = True,
+                 fc_num_layers: int = 1,
+                 sigma_begin: float = 10.0,
+                 sigma_end: float = 0.01,
+                 type_sigma_begin: float = 5.0,
+                 type_sigma_end: float = 0.01,
+                 max_atoms: int = 20,
+                 predict_property: bool = False,
+                 num_noise_level: int = 50,
                  **kwargs) -> None:
         
-        self.hparams = {
+        hparams_dict = {
             k: v
             for k, v in locals().items()
             if k not in ["self", "__class__", "kwargs"]
         }
-        self.hparams.update(kwargs)
+        hparams_dict.update(kwargs)
+        self.hparams = OmegaConf.create(hparams_dict)
+
         super().__init__()
 
 
         if self.hparams.load_pretrain:
-            self.encoder = CHGNet_encoder().laod()
+            self.encoder = CHGNet_encoder().load()
         else:
             self.encoder = CHGNet_encoder()
 
-        self.decoder = hydra.utils.instantiate(self.hparams.decoder)
+        #hydra.utils.instantiate(self.hparams.decoder)
+        self.decoder = GemNetTDecoder(hidden_dim= self.hparams.hidden_dim,
+                                      latent_dim= self.hparams.latent_dim,
+                                    #   max_neighbors=20,
+                                    #   radius=6.0
+                                      )
 
         self.fc_mu = nn.Linear(self.hparams.latent_dim,
                                self.hparams.latent_dim)

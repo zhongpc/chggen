@@ -19,7 +19,10 @@ from chggen.pl_data.dataset import CHGNetDataset, process_csv
 
 
 from chggen.pl_modules.encoder import CHGNet_encoder
+from chggen.pl_modules.decoder import GemNetTDecoder
 from chggen.pl_modules.model import CHGGen
+
+
 # process_csv(input_file='/home/zhongpc/cdvae/data/perov_5/test_zpc.csv',
 #             num_workers = 8, 
 #             niggli  = True, 
@@ -34,9 +37,21 @@ from chggen.pl_modules.model import CHGGen
 
 # item = dataset[0]
 
-encoder = CHGNet_encoder().load()
+# encoder = CHGNet_encoder().load()
 
-chggent = CHGGen()
+# decoder = GemNetTDecoder
 
+chggen = CHGGen() # good
 
-print("Done")
+# ## 
+# data_params = {
+#     "batch_size": 16,
+#     "pin_memory": True,
+#     "shuffle": True,
+#     "collate_fn": collate_batch_v1,
+# }
+
+# train_generator = DataLoader(dataset, **data_params)
+# val_generator = DataLoader(val_dataset, **data_params)
+
+# print("Done")

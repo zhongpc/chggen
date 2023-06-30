@@ -6,7 +6,7 @@ LICENSE file in the root directory of this source tree.
 """
 
 from typing import Optional
-
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -122,9 +122,12 @@ class GemNetT(torch.nn.Module):
         otf_graph: bool = False,
         output_init: str = "HeOrthogonal",
         activation: str = "swish",
-        scale_file: Optional[str] = None,
+        scale_file: Optional[str] = 'gemnet-dT.json'
     ):
         super().__init__()
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        scale_file = os.path.join(current_dir, scale_file)
+
         self.num_targets = num_targets
         assert num_blocks > 0
         self.num_blocks = num_blocks

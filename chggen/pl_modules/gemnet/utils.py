@@ -9,13 +9,13 @@ import json
 
 import torch
 from torch_scatter import segment_csr
+import os
 
 
 def read_json(path):
     """"""
     if not path.endswith(".json"):
         raise UserWarning(f"Path {path} is not a json-path.")
-
     with open(path, "r") as f:
         content = json.load(f)
     return content
