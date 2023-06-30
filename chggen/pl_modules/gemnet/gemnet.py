@@ -34,7 +34,7 @@ from .utils import (
 )
 
 
-class GemNetT(torch.nn.Module):
+class GemNetT(nn.Module):
     """
     GemNet-T, triplets-only variant of GemNet
 

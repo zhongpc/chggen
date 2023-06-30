@@ -10,7 +10,7 @@ from torch_geometric.data import Data
 
 from p_tqdm import p_umap
 
-from chggen.common.utils import PROJECT_ROOT
+# from chggen.common.utils import PROJECT_ROOT
 from chggen.common.data_utils import (
     preprocess, preprocess_tensors, add_scaled_lattice_prop)
 
@@ -224,26 +224,26 @@ class TensorCrystDataset(Dataset):
         return f"TensorCrystDataset(len: {len(self.cached_data)})"
 
 
-@hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
-def main(cfg: omegaconf.DictConfig):
-    from torch_geometric.data import Batch
-    from chggen.common.data_utils import get_scaler_from_data_list
-    dataset: CrystDataset = hydra.utils.instantiate(
-        cfg.data.datamodule.datasets.train, _recursive_=False
-    )
-    lattice_scaler = get_scaler_from_data_list(
-        dataset.cached_data,
-        key='scaled_lattice')
-    scaler = get_scaler_from_data_list(
-        dataset.cached_data,
-        key=dataset.prop)
+# @hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
+# def main(cfg: omegaconf.DictConfig):
+#     from torch_geometric.data import Batch
+#     from chggen.common.data_utils import get_scaler_from_data_list
+#     dataset: CrystDataset = hydra.utils.instantiate(
+#         cfg.data.datamodule.datasets.train, _recursive_=False
+#     )
+#     lattice_scaler = get_scaler_from_data_list(
+#         dataset.cached_data,
+#         key='scaled_lattice')
+#     scaler = get_scaler_from_data_list(
+#         dataset.cached_data,
+#         key=dataset.prop)
 
-    dataset.lattice_scaler = lattice_scaler
-    dataset.scaler = scaler
-    data_list = [dataset[i] for i in range(len(dataset))]
-    batch = Batch.from_data_list(data_list)
-    return batch
+#     dataset.lattice_scaler = lattice_scaler
+#     dataset.scaler = scaler
+#     data_list = [dataset[i] for i in range(len(dataset))]
+#     batch = Batch.from_data_list(data_list)
+#     return batch
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

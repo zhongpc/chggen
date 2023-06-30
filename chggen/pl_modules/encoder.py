@@ -150,6 +150,7 @@ class CHGNet_encoder(nn.Module):
         self.bond_fea_dim = bond_fea_dim
         self.is_intensive = is_intensive
         self.n_conv = n_conv
+        self.return_crys_feature = True
 
         # Optionally, define composition model
         if isinstance(composition_model, nn.Module):
@@ -302,56 +303,55 @@ class CHGNet_encoder(nn.Module):
             f"CHGNet initialized with {sum(p.numel() for p in self.parameters()):,} "
             f"parameters"
         )
-
     def forward(
-        self,
-        graphs: Sequence[CrystalGraph],
-        task: PredTask = "e",
-        return_atom_feas: bool = False,
-        return_crystal_feas: bool = True,
-    ) -> dict:
-        """Get prediction associated with input graphs
-        Args:
-            graphs (List): a list of CrystalGraphs
-            task (str): the prediction task
-                        eg: 'e', 'em', 'ef', 'efs', 'efsm'
-                Default = 'e'
-            return_atom_feas (bool): whether to return the atom features before last
-                conv layer
-                Default = False
-            return_crystal_feas (bool): whether to return crystal feature
-                Default = False
-        Returns:
-            model output (dict).
-        """
-        compute_force = "f" in task
-        compute_stress = "s" in task
-        site_wise = "m" in task
+            self,
+            graphs: Sequence[CrystalGraph],
+            task: PredTask = "e",
+            return_atom_feas: bool = False,
+            return_crystal_feas: bool = True,
+        ) -> dict:
+            """Get prediction associated with input graphs
+            Args:
+                graphs (List): a list of CrystalGraphs
+                task (str): the prediction task
+                            eg: 'e', 'em', 'ef', 'efs', 'efsm'
+                    Default = 'e'
+                return_atom_feas (bool): whether to return the atom features before last
+                    conv layer
+                    Default = False
+                return_crystal_feas (bool): whether to return crystal feature
+                    Default = False
+            Returns:
+                model output (dict).
+            """
+            compute_force = "f" in task
+            compute_stress = "s" in task
+            site_wise = "m" in task
 
-        # Optionally, make composition model prediction
-        comp_energy = (
-            0 if self.composition_model is None else self.composition_model(graphs)
-        )
+            # Optionally, make composition model prediction
+            comp_energy = (
+                0 if self.composition_model is None else self.composition_model(graphs)
+            )
 
-        # Make batched graph
-        batched_graph = BatchedGraph.from_graphs(
-            graphs,
-            bond_basis_expansion=self.bond_basis_expansion,
-            angle_basis_expansion=self.angle_basis_expansion,
-            compute_stress=compute_stress,
-        )
+            # Make batched graph
+            batched_graph = BatchedGraph.from_graphs(
+                graphs,
+                bond_basis_expansion=self.bond_basis_expansion,
+                angle_basis_expansion=self.angle_basis_expansion,
+                compute_stress=compute_stress,
+            )
 
-        # Pass to model
-        prediction = self._compute(
-            batched_graph,
-            site_wise=site_wise,
-            compute_force=compute_force,
-            compute_stress=compute_stress,
-            return_atom_feas=return_atom_feas,
-            return_crystal_feas=return_crystal_feas,
-        )
-        prediction["e"] += comp_energy
-        return prediction
+            # Pass to model
+            prediction = self._compute(
+                batched_graph,
+                site_wise=site_wise,
+                compute_force=compute_force,
+                compute_stress=compute_stress,
+                return_atom_feas=return_atom_feas,
+                return_crystal_feas=return_crystal_feas,
+            )
+            prediction["e"] += comp_energy
+            return prediction
 
     def _compute(
         self,
@@ -465,6 +465,11 @@ class CHGNet_encoder(nn.Module):
             if return_crystal_feas is True:
                 prediction["crystal_fea"] = crystal_feas
 
+        if return_crystal_feas is True:
+            crystal_feas = self.pooling(atom_feas, g.atom_owners)
+            prediction["crystal_fea"] = crystal_feas
+        
+
         # Compute force
         if compute_force:
             # Need to retain_graph here, because energy is used in loss function,
@@ -492,7 +497,6 @@ class CHGNet_encoder(nn.Module):
         prediction["e"] = energy
 
         return prediction
-
     def predict_structure(
         self,
         structure: Structure | Sequence[Structure],

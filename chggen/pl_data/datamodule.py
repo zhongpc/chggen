@@ -11,7 +11,7 @@ from omegaconf import DictConfig
 from torch.utils.data import Dataset
 from torch_geometric.data import DataLoader
 
-from chggen.common.utils import PROJECT_ROOT
+# from chggen.common.utils import PROJECT_ROOT
 from chggen.common.data_utils import get_scaler_from_data_list
 
 
@@ -139,14 +139,14 @@ class CrystDataModule(pl.LightningDataModule):
         )
 
 
-@hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
-def main(cfg: omegaconf.DictConfig):
-    datamodule: pl.LightningDataModule = hydra.utils.instantiate(
-        cfg.data.datamodule, _recursive_=False
-    )
-    datamodule.setup('fit')
-    import pdb
-    pdb.set_trace()
+# @hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
+# def main(cfg: omegaconf.DictConfig):
+#     datamodule: pl.LightningDataModule = hydra.utils.instantiate(
+#         cfg.data.datamodule, _recursive_=False
+#     )
+#     datamodule.setup('fit')
+#     import pdb
+#     pdb.set_trace()
 
 
 if __name__ == "__main__":

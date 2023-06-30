@@ -85,13 +85,13 @@ def log_hyperparameters(
     trainer.logger.log_hyperparams = lambda params: None
 
 
-# Load environment variables
+# # Load environment variables
 load_envs()
 
-# Set the cwd to the project root
-PROJECT_ROOT: Path = Path(get_env("PROJECT_ROOT"))
-assert (
-    PROJECT_ROOT.exists()
-), "You must configure the PROJECT_ROOT environment variable in a .env file!"
+# # Set the cwd to the project root
+# PROJECT_ROOT: Path = Path(get_env("PROJECT_ROOT"))
+# assert (
+#     PROJECT_ROOT.exists()
+# ), "You must configure the PROJECT_ROOT environment variable in a .env file!"
 
-os.chdir(PROJECT_ROOT)
+# os.chdir(PROJECT_ROOT)
