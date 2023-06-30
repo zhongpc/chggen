@@ -12,10 +12,10 @@ from pathlib import Path
 import smact
 from smact.screening import pauling_test
 
-from cdvae.common.constants import CompScalerMeans, CompScalerStds
-from cdvae.common.data_utils import StandardScaler, chemical_symbols
-from cdvae.pl_data.dataset import TensorCrystDataset
-from cdvae.pl_data.datamodule import worker_init_fn
+from chggen.common.constants import CompScalerMeans, CompScalerStds
+from chggen.common.data_utils import StandardScaler, chemical_symbols
+from chggen.pl_data.dataset import TensorCrystDataset
+from chggen.pl_data.datamodule import worker_init_fn
 
 from torch_geometric.data import DataLoader
 
@@ -40,9 +40,9 @@ def load_data(file_path):
 
 
 def get_model_path(eval_model_name):
-    import cdvae
+    import chggen
     model_path = (
-        Path(cdvae.__file__).parent / 'prop_models' / eval_model_name)
+        Path(chggen.__file__).parent / 'prop_models' / eval_model_name)
     return model_path
 
 
