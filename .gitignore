@@ -4,6 +4,7 @@
 # Ignore all files in the build directory
 chggen.egg-info/
 test_scripts/
+lightning_logs/
 
 # Ignore specific file
 myconfig.properties
