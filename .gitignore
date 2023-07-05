@@ -5,6 +5,7 @@
 chggen.egg-info/
 test_scripts/
 lightning_logs/
+.vscode/
 
 # Ignore specific file
 myconfig.properties
