@@ -4,6 +4,8 @@ import networkx as nx
 import torch
 import copy
 import itertools
+from pathlib import Path
+
 
 from pymatgen.core.structure import Structure
 from pymatgen.core.lattice import Lattice
@@ -250,6 +252,7 @@ def frac_to_cart_coords(
 ):
     lattice = lattice_params_to_matrix_torch(lengths, angles)
     lattice_nodes = torch.repeat_interleave(lattice, num_atoms, dim=0)
+    # frac_flatten = torch.flatten(frac_coords, start_dim =0, end_dim= 1)
     pos = torch.einsum('bi,bij->bj', frac_coords, lattice_nodes)  # cart coords
 
     return pos
@@ -645,6 +648,20 @@ def get_scaler_from_data_list(data_list, key):
     scaler = StandardScalerTorch()
     scaler.fit(targets)
     return scaler
+
+def get_scaler(dataset = None, use_prop_scaler = False, 
+               scaler_path = None):
+    # Load once to compute property scaler
+    if scaler_path is None:
+        lattice_scaler = get_scaler_from_data_list(
+            dataset.cached_data,
+            key='scaled_lattice')
+        if use_prop_scaler:
+            NotImplementedError("Not implemented the multi prop scaler yet.")
+    else:
+        lattice_scaler = torch.load(
+            Path(scaler_path) / 'lattice_scaler.pt')
+    return lattice_scaler
 
 
 def preprocess(input_file, num_workers, niggli, primitive, graph_method,

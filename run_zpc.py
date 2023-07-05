@@ -56,7 +56,7 @@ lattice_scaler = get_scaler(dataset= dataset)
 item = dataset[0]
 
 x_ = item['crys_graph']
-y_ = item['y']
+y_ = item['properties']
 
 x_ = x_.to(device = device)
 y_ = y_.to(device = device)

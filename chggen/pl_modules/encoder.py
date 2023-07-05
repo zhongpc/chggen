@@ -30,7 +30,6 @@ class CHGNet_encoder(nn.Module):
     """Crystal Hamiltonian Graph neural Network
     A model that takes in a crystal graph and output energy, force, magmom, stress.
     """
-
     def __init__(
         self,
         atom_fea_dim: int = 64,
@@ -58,6 +57,7 @@ class CHGNet_encoder(nn.Module):
         cutoff_coeff: int = 5,
         learnable_rbf: bool = True,
         return_crys_feature: bool = True,
+        device = 'cpu',
         **kwargs,
     ) -> None:
         """Initialize the CHGNet.
@@ -151,6 +151,7 @@ class CHGNet_encoder(nn.Module):
         self.is_intensive = is_intensive
         self.n_conv = n_conv
         self.return_crys_feature = True
+        self.device = device
 
         # Optionally, define composition model
         if isinstance(composition_model, nn.Module):
@@ -165,6 +166,8 @@ class CHGNet_encoder(nn.Module):
             # fixed composition_model weights
             for param in self.composition_model.parameters():
                 param.requires_grad = False
+
+        self.composition_model.device = self.device
 
         # Define Crystal Graph Converter
         self.graph_converter = CrystalGraphConverter(

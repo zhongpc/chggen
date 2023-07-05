@@ -10,6 +10,9 @@ from torch_scatter import scatter
 from tqdm import tqdm
 from omegaconf import OmegaConf
 
+from torch.optim.lr_scheduler import ExponentialLR
+
+
 from chggen.common.data_utils import (
     EPSILON, cart_to_frac_coords, mard, lengths_angles_to_volume,
     frac_to_cart_coords, min_distance_sqr_pbc)
@@ -19,44 +22,58 @@ from chggen.pl_modules.embeddings import KHOT_EMBEDDINGS
 from chggen.pl_modules.encoder import CHGNet_encoder
 from chggen.pl_modules.decoder import GemNetTDecoder
 
-class CHGGen(nn.Module):
+
+
+def build_mlp(in_dim, hidden_dim, fc_num_layers, out_dim):
+    mods = [nn.Linear(in_dim, hidden_dim), nn.ReLU()]
+    for i in range(fc_num_layers-1):
+        mods += [nn.Linear(hidden_dim, hidden_dim), nn.ReLU()]
+    mods += [nn.Linear(hidden_dim, out_dim)]
+    return nn.Sequential(*mods)
+
+class BaseModule(pl.LightningModule):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__()
+        # populate self.hparams with args and kwargs automagically!
+        self.save_hyperparameters()
+
+    def configure_optimizers(self, lr = 1e-3, use_lr_scheduler = True):
+        opt = torch.optim.Adam(self.parameters(), lr= lr)
+        if use_lr_scheduler:
+            return [opt]
+        scheduler = ExponentialLR(opt, gamma=0.95)
+        return {"optimizer": opt, "lr_scheduler": scheduler, "monitor": "val_loss"}
+
+
+
+class CHGGen(BaseModule):
     def __init__(self, 
-                 latent_dim: int = 64,
-                 hidden_dim: int = 128,
-                 load_pretrain: bool = True,
-                 fc_num_layers: int = 1,
-                 sigma_begin: float = 10.0,
-                 sigma_end: float = 0.01,
-                 type_sigma_begin: float = 5.0,
-                 type_sigma_end: float = 0.01,
-                 max_atoms: int = 20,
-                 predict_property: bool = False,
-                 num_noise_level: int = 50, 
-                 device: str = 'cuda',
-                 lattice_scale_method: str = 'scale_length',
+                 hparams_dict = {'latent_dim': 64, 'hidden_dim': 128, 'load_pretrain': True, 'fc_num_layers': 1, 
+                                 'sigma_begin': 10.0, 'sigma_end': 0.01, 'type_sigma_begin': 5.0, 'type_sigma_end': 0.01,
+                                 'max_atoms': 20, 'predict_property': False, 'num_noise_level': 50, 
+                                 'lattice_scale_method': 'scale_length', 
+                                 'cost_natom': 1.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 1.0,
+                                 'beta': 0.01,
+                                 'teacher_forcing_lattice': True,
+                                 'teacher_forcing_max_epoch': 1000},
                  lattice_scaler = None,
                  **kwargs) -> None:
-        
-        hparams_dict = {
-            k: v
-            for k, v in locals().items()
-            if k not in ["self", "__class__", "lattice_scaler", "kwargs"]
-        }
-        hparams_dict.update(kwargs)
-        self.hparams = OmegaConf.create(hparams_dict)
+
+        # hparams_dict.update(kwargs)
+        # aaa = OmegaConf.create(hparams_dict)
+        # self.hparams = OmegaConf.create(hparams_dict)
 
         super().__init__()
+        
+        self.save_hyperparameters(OmegaConf.create(hparams_dict))
         self.lattice_scaler = lattice_scaler
-
 
         if self.hparams.load_pretrain:
             self.encoder = CHGNet_encoder().load()
             self.encoder.return_crys_feature = True
-            # self.encoder.to(device=device)
         else:
             self.encoder = CHGNet_encoder()
             self.encoder.return_crys_feature = True
-            # self.encoder.to(device=device)
 
         #hydra.utils.instantiate(self.hparams.decoder)
         self.decoder = GemNetTDecoder(hidden_dim= self.hparams.hidden_dim,
@@ -64,7 +81,9 @@ class CHGGen(nn.Module):
                                     #   max_neighbors=20,
                                     #   radius=6.0
                                       )
-        self.decoder.to(device=device)
+    
+        
+
 
         self.fc_mu = nn.Linear(self.hparams.latent_dim,
                                self.hparams.latent_dim)
@@ -232,11 +251,22 @@ class CHGGen(nn.Module):
                         device=self.device)
         samples = self.langevin_dynamics(z, ld_kwargs)
         return samples
+    
+    # def transfer_batch_to_device(self, batch, device, dataloader_idx):
+
+    
 
     def forward(self, batch, teacher_forcing, training):
         # hacky way to resolve the NaN issue. Will need more careful debugging later.
-        mu, log_var, z = self.encode(batch)
 
+        # graph = self.transfer_batch_to_device(batch.crys_graph, device= self.device, dataloader_idx = batch.batch)
+
+        batch.batch = torch.arange(
+            len(batch.num_atoms), device=batch.num_atoms.device).repeat_interleave(batch.num_atoms)
+        
+        graphs = [g.to(self.device) for g in batch.crys_graph]
+        
+        mu, log_var, z = self.encode(graphs)
         (pred_num_atoms, pred_lengths_and_angles, pred_lengths, pred_angles,
          pred_composition_per_atom) = self.decode_stats(
             z, batch.num_atoms, batch.lengths, batch.angles, teacher_forcing)
@@ -315,6 +345,7 @@ class CHGGen(nn.Module):
             'rand_atom_types': rand_atom_types,
             'z': z,
         }
+
 
     def generate_rand_init(self, pred_composition_per_atom, pred_lengths,
                            pred_angles, num_atoms, batch):
@@ -398,7 +429,7 @@ class CHGGen(nn.Module):
 
     def lattice_loss(self, pred_lengths_and_angles, batch):
         self.lattice_scaler.match_device(pred_lengths_and_angles)
-        if self.hparams.data.lattice_scale_method == 'scale_length':
+        if self.hparams.lattice_scale_method == 'scale_length':
             target_lengths = batch.lengths / \
                 batch.num_atoms.view(-1, 1).float()**(1/3)
         target_lengths_and_angles = torch.cat(
@@ -411,6 +442,7 @@ class CHGGen(nn.Module):
         target_atom_types = target_atom_types - 1
         loss = F.cross_entropy(pred_composition_per_atom,
                                target_atom_types, reduction='none')
+        
         return scatter(loss, batch.batch, reduce='mean').mean()
 
     def coord_loss(self, pred_cart_coord_diff, noisy_frac_coords,
@@ -449,6 +481,12 @@ class CHGGen(nn.Module):
         return kld_loss
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+        # self.encoder.to(self.device)
+        # self.encoder.composition_model.to(self.device)
+
+        # self.encoder.device = self.device
+        # self.encoder.composition_model.device = self.device
+    
         teacher_forcing = (
             self.current_epoch <= self.hparams.teacher_forcing_max_epoch)
         outputs = self(batch, teacher_forcing, training=True)
@@ -526,7 +564,7 @@ class CHGGen(nn.Module):
             pred_lengths = scaled_preds[:, :3]
             pred_angles = scaled_preds[:, 3:]
 
-            if self.hparams.data.lattice_scale_method == 'scale_length':
+            if self.hparams.lattice_scale_method == 'scale_length':
                 pred_lengths = pred_lengths * \
                     batch.num_atoms.view(-1, 1).float()**(1/3)
             lengths_mard = mard(batch.lengths, pred_lengths)
@@ -556,135 +594,3 @@ class CHGGen(nn.Module):
             })
 
         return log_dict, loss
-
-
-
-def build_mlp(in_dim, hidden_dim, fc_num_layers, out_dim):
-    mods = [nn.Linear(in_dim, hidden_dim), nn.ReLU()]
-    for i in range(fc_num_layers-1):
-        mods += [nn.Linear(hidden_dim, hidden_dim), nn.ReLU()]
-    mods += [nn.Linear(hidden_dim, out_dim)]
-    return nn.Sequential(*mods)
-
-
-class BaseModule(pl.LightningModule):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__()
-        # populate self.hparams with args and kwargs automagically!
-        self.save_hyperparameters()
-
-    def configure_optimizers(self):
-        opt = hydra.utils.instantiate(
-            self.hparams.optim.optimizer, params=self.parameters(), _convert_="partial"
-        )
-        if not self.hparams.optim.use_lr_scheduler:
-            return [opt]
-        scheduler = hydra.utils.instantiate(
-            self.hparams.optim.lr_scheduler, optimizer=opt
-        )
-        return {"optimizer": opt, "lr_scheduler": scheduler, "monitor": "val_loss"}
-
-
-class CrystGNN_Supervise(BaseModule):
-    """
-    GNN model for fitting the supervised objectives for crystals.
-    """
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-        self.encoder = hydra.utils.instantiate(self.hparams.encoder)
-
-    def forward(self, batch) -> Dict[str, torch.Tensor]:
-        preds = self.encoder(batch)  # shape (N, 1)
-        return preds
-
-    def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-
-        preds = self(batch)
-
-        loss = F.mse_loss(preds, batch.y)
-        self.log_dict(
-            {'train_loss': loss},
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-        )
-        return loss
-
-    def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-
-        preds = self(batch)
-
-        log_dict, loss = self.compute_stats(batch, preds, prefix='val')
-
-        self.log_dict(
-            log_dict,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-        return loss
-
-    def test_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-
-        preds = self(batch)
-
-        log_dict, loss = self.compute_stats(batch, preds, prefix='test')
-
-        self.log_dict(
-            log_dict,
-        )
-        return loss
-
-    def compute_stats(self, batch, preds, prefix):
-        loss = F.mse_loss(preds, batch.y)
-        self.scaler.match_device(preds)
-        scaled_preds = self.scaler.inverse_transform(preds)
-        scaled_y = self.scaler.inverse_transform(batch.y)
-        mae = torch.mean(torch.abs(scaled_preds - scaled_y))
-
-        log_dict = {
-            f'{prefix}_loss': loss,
-            f'{prefix}_mae': mae,
-        }
-
-        if self.hparams.data.prop == 'scaled_lattice':
-            pred_lengths = scaled_preds[:, :3]
-            pred_angles = scaled_preds[:, 3:]
-            if self.hparams.data.lattice_scale_method == 'scale_length':
-                pred_lengths = pred_lengths * \
-                    batch.num_atoms.view(-1, 1).float()**(1/3)
-            lengths_mae = torch.mean(torch.abs(pred_lengths - batch.lengths))
-            angles_mae = torch.mean(torch.abs(pred_angles - batch.angles))
-            lengths_mard = mard(batch.lengths, pred_lengths)
-            angles_mard = mard(batch.angles, pred_angles)
-
-            pred_volumes = lengths_angles_to_volume(pred_lengths, pred_angles)
-            true_volumes = lengths_angles_to_volume(
-                batch.lengths, batch.angles)
-            volumes_mard = mard(true_volumes, pred_volumes)
-            log_dict.update({
-                f'{prefix}_lengths_mae': lengths_mae,
-                f'{prefix}_angles_mae': angles_mae,
-                f'{prefix}_lengths_mard': lengths_mard,
-                f'{prefix}_angles_mard': angles_mard,
-                f'{prefix}_volumes_mard': volumes_mard,
-            })
-        return log_dict, loss
-
-
-# @hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
-# def main(cfg: omegaconf.DictConfig):
-#     model: pl.LightningModule = hydra.utils.instantiate(
-#         cfg.model,
-#         optim=cfg.optim,
-#         data=cfg.data,
-#         logging=cfg.logging,
-#         _recursive_=False,
-#     )
-#     return model
-
-
-if __name__ == "__main__":
-    main()

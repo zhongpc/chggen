@@ -36,19 +36,23 @@ def worker_init_fn(id: int):
 class CrystDataModule(pl.LightningDataModule):
     def __init__(
         self,
-        datasets: DictConfig,
-        num_workers: DictConfig,
-        batch_size: DictConfig,
+        train_dataset = None,
+        val_dataset = None,
+        test_dataset = None,
+        num_workers: int = 1,
+        batch_size: int = 16,
         scaler_path=None,
     ):
         super().__init__()
-        self.datasets = datasets
+        self.train_dataset = train_dataset
+        self.val_dataset = val_dataset
+        self.test_dataset = test_dataset
         self.num_workers = num_workers
         self.batch_size = batch_size
 
-        self.train_dataset: Optional[Dataset] = None
-        self.val_datasets: Optional[Sequence[Dataset]] = None
-        self.test_datasets: Optional[Sequence[Dataset]] = None
+        # self.train_dataset: Optional[Dataset] = None
+        # self.val_datasets: Optional[Sequence[Dataset]] = None
+        # self.test_datasets: Optional[Sequence[Dataset]] = None
 
         self.get_scaler(scaler_path)
 
@@ -56,79 +60,71 @@ class CrystDataModule(pl.LightningDataModule):
         # download only
         pass
 
-    def get_scaler(self, scaler_path):
+    def get_scaler(self, use_prop_scaler = False, scaler_path = None):
         # Load once to compute property scaler
         if scaler_path is None:
-            train_dataset = hydra.utils.instantiate(self.datasets.train)
             self.lattice_scaler = get_scaler_from_data_list(
-                train_dataset.cached_data,
+                self.train_dataset.cached_data,
                 key='scaled_lattice')
-            self.scaler = get_scaler_from_data_list(
-                train_dataset.cached_data,
-                key=train_dataset.prop)
+            if use_prop_scaler:
+                NotImplementedError("Not implemented the multi prop scaler yet.")
         else:
             self.lattice_scaler = torch.load(
                 Path(scaler_path) / 'lattice_scaler.pt')
-            self.scaler = torch.load(Path(scaler_path) / 'prop_scaler.pt')
+        # return lattice_scaler
+
+    # def get_scaler(self, scaler_path):
+    #     # Load once to compute property scaler
+    #     if scaler_path is None:
+    #         train_dataset = hydra.utils.instantiate(self.datasets.train)
+    #         self.lattice_scaler = get_scaler_from_data_list(
+    #             train_dataset.cached_data,
+    #             key='scaled_lattice')
+    #         self.scaler = get_scaler_from_data_list(
+    #             train_dataset.cached_data,
+    #             key=train_dataset.prop)
+    #     else:
+    #         self.lattice_scaler = torch.load(
+    #             Path(scaler_path) / 'lattice_scaler.pt')
+    #         self.scaler = torch.load(Path(scaler_path) / 'prop_scaler.pt')
 
     def setup(self, stage: Optional[str] = None):
         """
         construct datasets and assign data scalers.
         """
         if stage is None or stage == "fit":
-            self.train_dataset = hydra.utils.instantiate(self.datasets.train)
-            self.val_datasets = [
-                hydra.utils.instantiate(dataset_cfg)
-                for dataset_cfg in self.datasets.val
-            ]
-
             self.train_dataset.lattice_scaler = self.lattice_scaler
-            self.train_dataset.scaler = self.scaler
-            for val_dataset in self.val_datasets:
-                val_dataset.lattice_scaler = self.lattice_scaler
-                val_dataset.scaler = self.scaler
+            self.val_dataset.lattice_scaler = self.lattice_scaler
 
         if stage is None or stage == "test":
-            self.test_datasets = [
-                hydra.utils.instantiate(dataset_cfg)
-                for dataset_cfg in self.datasets.test
-            ]
-            for test_dataset in self.test_datasets:
-                test_dataset.lattice_scaler = self.lattice_scaler
-                test_dataset.scaler = self.scaler
+            self.test_dataset.lattice_scaler = self.lattice_scaler
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
             self.train_dataset,
             shuffle=True,
-            batch_size=self.batch_size.train,
-            num_workers=self.num_workers.train,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
             worker_init_fn=worker_init_fn,
         )
 
-    def val_dataloader(self) -> Sequence[DataLoader]:
-        return [
-            DataLoader(
-                dataset,
+    def val_dataloader(self) -> DataLoader:
+        return DataLoader(
+                self.val_dataset,
                 shuffle=False,
-                batch_size=self.batch_size.val,
-                num_workers=self.num_workers.val,
+                batch_size=self.batch_size, # need to improve
+                num_workers=self.num_workers,
                 worker_init_fn=worker_init_fn,
             )
-            for dataset in self.val_datasets
-        ]
 
-    def test_dataloader(self) -> Sequence[DataLoader]:
-        return [
-            DataLoader(
-                dataset,
+    def test_dataloader(self) -> DataLoader:
+        return DataLoader(
+                self.test_dataset,
                 shuffle=False,
-                batch_size=self.batch_size.test,
-                num_workers=self.num_workers.test,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
                 worker_init_fn=worker_init_fn,
             )
-            for dataset in self.test_datasets
-        ]
 
     def __repr__(self) -> str:
         return (
@@ -149,5 +145,5 @@ class CrystDataModule(pl.LightningDataModule):
 #     pdb.set_trace()
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

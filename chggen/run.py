@@ -150,7 +150,8 @@ def run(cfg: DictConfig) -> None:
         deterministic=cfg.train.deterministic,
         check_val_every_n_epoch=cfg.logging.val_check_interval,
         #progress_bar_refresh_rate=cfg.logging.progress_bar_refresh_rate,
-        #resume_from_checkpoint=ckpt,
+        #resume_from_checkpoint=ck
+        # pt,
         **cfg.train.pl_trainer,
     )
     log_hyperparameters(trainer=trainer, model=model, cfg=cfg)

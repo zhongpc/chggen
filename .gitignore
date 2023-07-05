@@ -1,0 +1,10 @@
+# Ignore all .log files
+*.log
+
+# Ignore all files in the build directory
+chggen.egg-info/
+test_scripts/
+
+# Ignore specific file
+myconfig.properties
+
