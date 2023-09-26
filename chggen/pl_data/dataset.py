@@ -18,7 +18,8 @@ from pymatgen.core import Structure
 from chgnet.graph.converter import CrystalGraphConverter
 
 
-
+crys_converter = CrystalGraphConverter(atom_graph_cutoff=5,
+                                            bond_graph_cutoff=3)
 
 
 def process_csv(input_file, num_workers, niggli, primitive, prop_list):
@@ -27,7 +28,11 @@ def process_csv(input_file, num_workers, niggli, primitive, prop_list):
         crystal_str = row['cif']
         structure = Structure.from_str(crystal_str, fmt = 'cif')
 
-        crys_graph = crys_converter(structure)
+        try:
+            crys_graph = crys_converter(structure)
+        except:
+            print("Crystal graph construction failed in CHGNet. Check the process_csv.")
+            return 
 
         properties = {k: row[k] for k in prop_list if k in row.keys()}
         result_dict = {
@@ -50,13 +55,14 @@ def process_csv(input_file, num_workers, niggli, primitive, prop_list):
         [primitive] * len(df),
         [prop_list] * len(df),
         num_cpus=num_workers)
+    
+    unordered_results = [item for item in unordered_results if item is not None]
+    
+    # mpid_to_results = {result['mp_id']: result for result in unordered_results}
+    # ordered_results = [mpid_to_results[df.iloc[idx]['material_id']]
+    #                    for idx in range(len(unordered_results))]
 
-    mpid_to_results = {result['mp_id']: result for result in unordered_results}
-    ordered_results = [mpid_to_results[df.iloc[idx]['material_id']]
-                       for idx in range(len(df))]
-
-    return ordered_results
-
+    return unordered_results
 
 class CHGNetDataset(Dataset):
     def __init__(self, name: str, path: str,

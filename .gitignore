@@ -1,4 +1,5 @@
 # Ignore all .log files
+*cpython*
 *.log
 
 # Ignore all files in the build directory
