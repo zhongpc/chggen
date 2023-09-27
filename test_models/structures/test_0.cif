@@ -1,16 +1,16 @@
 # generated using pymatgen
-data_GeF3
+data_AcErAmBeFeCoSnPdAr
 _symmetry_space_group_name_H-M   'P 1'
-_cell_length_a   4.14476770
-_cell_length_b   4.39839851
-_cell_length_c   5.74410391
-_cell_angle_alpha   90.82928309
-_cell_angle_beta   86.64215184
-_cell_angle_gamma   90.04115084
+_cell_length_a   5.44437176
+_cell_length_b   5.47456489
+_cell_length_c   6.88046408
+_cell_angle_alpha   80.42297074
+_cell_angle_beta   90.75722459
+_cell_angle_gamma   100.50398933
 _symmetry_Int_Tables_number   1
-_chemical_formula_structural   GeF3
-_chemical_formula_sum   'Ge1 F3'
-_cell_volume   104.52623818
+_chemical_formula_structural   AcErAmBeFeCoSnPdAr
+_chemical_formula_sum   'Ac1 Er1 Am1 Be1 Fe1 Co1 Sn1 Pd1 Ar1'
+_cell_volume   198.79823999
 _cell_formula_units_Z   1
 loop_
  _symmetry_equiv_pos_site_id
@@ -24,7 +24,12 @@ loop_
  _atom_site_fract_y
  _atom_site_fract_z
  _atom_site_occupancy
-  F  F0  1  0.93100929  0.16010098  0.60782355  1
-  F  F1  1  0.36324200  0.03681973  0.60006243  1
-  F  F2  1  0.01807347  0.00176770  0.59004366  1
-  Ge  Ge3  1  0.28904358  0.00723529  0.99951780  1
+  Be  Be0  1  0.08025710  0.20276575  0.37191966  1
+  Pd  Pd1  1  0.30625337  0.32622543  0.67975402  1
+  Sn  Sn2  1  0.15717062  0.60812348  0.59328926  1
+  Co  Co3  1  0.43274954  0.17439495  0.62567765  1
+  Fe  Fe4  1  0.18110228  0.26033562  0.40486392  1
+  Er  Er5  1  0.28302014  0.40601477  0.97262055  1
+  Ar  Ar6  1  0.25429362  0.70602095  0.86302638  1
+  Am  Am7  1  0.03531625  0.60117269  0.90637004  1
+  Ac  Ac8  1  0.12264344  0.21447009  0.29800600  1

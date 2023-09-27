@@ -2,10 +2,12 @@ from pathlib import Path
 import pickle
 import torch
 import os
+from chggen.common.data_utils import get_scaler_from_data_list
 from chggen.pl_data.dataset import CHGNetDataset
 from chggen.pl_data.datamodule import CrystDataModule
-from chggen.pl_modules.model import CHGGen_gemnet as CHGGen
-from chggen.common.data_utils import get_scaler_from_data_list
+from chggen.pl_modules.model import CHGGen
+# from chggen.pl_modules.model import CHGGen_gemnet as CHGGen
+
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch_geometric.data import Batch
@@ -14,8 +16,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 
 import warnings
-
-# warnings.filterwarnings("ignore", category=UserWarning, module="pymatgen.io.cif", lineno=1120)
 warnings.simplefilter(action='ignore', category=Warning)
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
@@ -36,17 +36,20 @@ def mkdir(path: str):
         print("Folder exists")
     return path
 
-# device = torch.device("cuda:7")
-
-dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/mptrj/MPtrj_debug.csv',
-                        name = 'mptrj_debug',
-                        prop_list = ['e_hull'],
-                        )
+# dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/mptrj/MPtrj_debug.csv',
+#                         name = 'mptrj_debug',
+#                         prop_list = ['e_hull'],
+#                         )
 
 # dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/train.csv',
 # name = 'train_perov',
 # prop_list = ['heat_all'],
 # )
+
+dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv',
+name = 'zpc_debug',
+prop_list = ['heat_all'],
+)
 
 
 ### test the lattice scaler ##
@@ -119,7 +122,7 @@ data_list = [dataset[i] for i in range(len(dataset))]
 datamodule = CrystDataModule(train_dataset= dataset,
                              val_dataset= dataset,
                              num_workers=8,
-                             batch_size= 2,
+                             batch_size= 32,
                                 )
 
 
@@ -133,7 +136,8 @@ model_hparams ={'latent_dim': 64, 'hidden_dim': 128,
                 'cost_natom': 1.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 1.0,
                 'beta': 0.01,
                 'teacher_forcing_lattice': True,
-                'teacher_forcing_max_epoch': 1000}
+                'teacher_forcing_max_epoch': 1000,
+                'decoder': 'nequip'}
 
 chggen = CHGGen(lattice_scaler= lattice_scaler, 
                 hparams_dict= model_hparams)
@@ -158,7 +162,7 @@ checkpoint_callback = ModelCheckpoint(
 )
 
 trainer = pl.Trainer(accelerator = "gpu", 
-                     devices = [0],
+                     devices = [7],
                      max_epochs= 10,
                      callbacks=[checkpoint_callback],
                     #  strategy = 'ddp_find_unused_parameters_true',

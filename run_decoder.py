@@ -61,6 +61,8 @@ chggen.to(device = device)
 # encode
 mu, log_var, z = chggen.encode([x_, x_])
 
+# chggen([x_, x_])
+
 # generate stats
 num_atoms, _, lengths, angles, composition_per_atom = chggen.decode_stats(z)
 # obtain atom types.

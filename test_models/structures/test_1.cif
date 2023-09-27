@@ -1,17 +1,17 @@
 # generated using pymatgen
-data_F6Ne
+data_Fr2TbNdErNpCo2SnN2NePd2
 _symmetry_space_group_name_H-M   'P 1'
-_cell_length_a   6.16256330
-_cell_length_b   6.94988459
-_cell_length_c   8.69752026
-_cell_angle_alpha   90.63932185
-_cell_angle_beta   88.05759916
-_cell_angle_gamma   90.68401357
+_cell_length_a   6.51494931
+_cell_length_b   6.52202957
+_cell_length_c   8.14790440
+_cell_angle_alpha   83.12749329
+_cell_angle_beta   92.42880405
+_cell_angle_gamma   99.42660729
 _symmetry_Int_Tables_number   1
-_chemical_formula_structural   F6Ne
-_chemical_formula_sum   'F12 Ne2'
-_cell_volume   372.24487508
-_cell_formula_units_Z   2
+_chemical_formula_structural   Fr2TbNdErNpCo2SnN2NePd2
+_chemical_formula_sum   'Fr2 Tb1 Nd1 Er1 Np1 Co2 Sn1 N2 Ne1 Pd2'
+_cell_volume   338.98925103
+_cell_formula_units_Z   1
 loop_
  _symmetry_equiv_pos_site_id
  _symmetry_equiv_pos_as_xyz
@@ -24,17 +24,17 @@ loop_
  _atom_site_fract_y
  _atom_site_fract_z
  _atom_site_occupancy
-  F  F0  1  0.58194441  0.42782584  0.75275898  1
-  F  F1  1  0.56330919  0.33294722  0.62695390  1
-  F  F2  1  0.54327500  0.64483917  0.64139026  1
-  F  F3  1  0.33667889  0.51096243  0.76521057  1
-  F  F4  1  0.30808944  0.38425863  0.56496119  1
-  Ne  Ne5  1  0.46384147  0.21083699  0.84653771  1
-  F  F6  1  0.64236057  0.47249758  0.46252429  1
-  F  F7  1  0.53410822  0.59126699  0.42294052  1
-  F  F8  1  0.36343774  0.31715751  0.49170962  1
-  Ne  Ne9  1  0.29838020  0.61854088  0.29630807  1
-  F  F10  1  0.24372081  0.50348163  0.58797884  1
-  F  F11  1  0.48826122  0.59101593  0.72884417  1
-  F  F12  1  0.51023620  0.36675528  0.42133030  1
-  F  F13  1  0.40488434  0.68174171  0.59713608  1
+  N  N0  1  0.84643614  0.07581200  0.78266287  1
+  N  N1  1  0.62034011  0.82507974  0.80211633  1
+  Sn  Sn2  1  0.08379259  0.98900670  0.97435975  1
+  Ne  Ne3  1  0.54107332  0.47121197  0.48662087  1
+  Tb  Tb4  1  0.27540183  0.79835397  0.11751223  1
+  Co  Co5  1  0.56898016  0.56748068  0.01978685  1
+  Co  Co6  1  0.28742489  0.79261374  0.03957597  1
+  Pd  Pd7  1  0.55129820  0.81839150  0.00236480  1
+  Pd  Pd8  1  0.74186337  0.95831960  0.57445216  1
+  Fr  Fr9  1  0.37019366  0.62031800  0.41200575  1
+  Er  Er10  1  0.64735836  0.40700766  0.97700691  1
+  Nd  Nd11  1  0.54135954  0.52713317  0.54531896  1
+  Fr  Fr12  1  0.54808062  0.44448903  0.43287489  1
+  Np  Np13  1  0.07171881  0.34346175  0.40006837  1

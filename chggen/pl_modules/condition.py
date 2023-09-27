@@ -8,7 +8,6 @@ from torch.nn import Softmin
 from typing import Any, List
 import numpy as np
 
-# import M3GNet
 
 class Predictor(nn.Module):
     """Predictor for property from structure."""

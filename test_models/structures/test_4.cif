@@ -1,16 +1,16 @@
 # generated using pymatgen
-data_InGe3F2Ne2
+data_I
 _symmetry_space_group_name_H-M   'P 1'
-_cell_length_a   5.32304439
-_cell_length_b   5.73835838
-_cell_length_c   7.37102890
-_cell_angle_alpha   92.43486264
-_cell_angle_beta   88.31952329
-_cell_angle_gamma   90.75967431
+_cell_length_a   2.47477314
+_cell_length_b   2.92816813
+_cell_length_c   3.43526912
+_cell_angle_alpha   89.33344435
+_cell_angle_beta   90.06602311
+_cell_angle_gamma   92.41989468
 _symmetry_Int_Tables_number   1
-_chemical_formula_structural   InGe3F2Ne2
-_chemical_formula_sum   'In1 Ge3 F2 Ne2'
-_cell_volume   224.83574096
+_chemical_formula_structural   I
+_chemical_formula_sum   I1
+_cell_volume   24.86996762
 _cell_formula_units_Z   1
 loop_
  _symmetry_equiv_pos_site_id
@@ -24,11 +24,4 @@ loop_
  _atom_site_fract_y
  _atom_site_fract_z
  _atom_site_occupancy
-  F  F0  1  0.99777746  0.41870612  0.03410158  1
-  Ge  Ge1  1  0.81496596  0.99209875  0.99951160  1
-  Ge  Ge2  1  0.03447720  0.99596173  0.54171562  1
-  Ge  Ge3  1  0.01465326  0.00190461  0.59281665  1
-  F  F4  1  0.03897373  0.54161119  0.06354856  1
-  Ne  Ne5  1  0.20181639  0.97663599  0.97226584  1
-  Ne  Ne6  1  0.23733799  0.64248610  0.42578608  1
-  In  In7  1  0.31475478  0.71281689  0.86967748  1
+  I  I0  1  0.06383510  0.10966485  0.88094014  1

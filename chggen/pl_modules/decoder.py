@@ -89,13 +89,13 @@ class NequipDecoder(nn.Module):
         super(NequipDecoder, self).__init__()
         self.cutoff = cutoff
         self.max_num_neighbors = max_neighbors
-        self.nequip = NequIP(init_embed     = InitialEmbedding(num_species= MAX_ATOMIC_NUM + 1, cutoff=cutoff),
-                            irreps_node_x  = '8x0e',
-                            irreps_node_z  = '8x0e',
-                            irreps_hidden  = '8x0e + 8x1e + 4x2e',
-                            irreps_edge    = '1x0e + 1x1e + 1x2e',
+        self.nequip = NequIP(init_embed     = InitialEmbedding(num_species= MAX_ATOMIC_NUM, cutoff=cutoff, emb_dim= 32),
+                            irreps_node_x  = '32x0e',
+                            irreps_node_z  = '32x0e',
+                            irreps_hidden  = '32x0e + 16x1e + 8x2e',
+                            irreps_edge    = '32x0e + 16x1e + 8x2e',
                             irreps_out     = '1x1e',
-                            irreps_type    = '100x0e',
+                            irreps_type    = '94x0e',
                             num_convs      = 3,
                             radial_neurons = [16, 64],
                             num_neighbors  = 12,
@@ -146,9 +146,10 @@ class NequipDecoder(nn.Module):
         # all_cells = torch.tensor(all_cells)
         # all_cells = all_cells.repeat_interleave(num_atoms, dim = 0)
 
+        # print(pred_atom_types)
 
         data = Data(
-            x       = pred_atom_types,
+            x       = pred_atom_types - 1, # minus 1 to accomodate the index 
             pos     = pred_frac_coords,
             # cell    = all_cells,
             pbc     = True,

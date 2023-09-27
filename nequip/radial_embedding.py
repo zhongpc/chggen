@@ -6,10 +6,10 @@ from nequip.basis import bessel
 
 # radial embedding
 class InitialEmbedding(nn.Module):
-    def __init__(self, num_species, cutoff):
+    def __init__(self, num_species, cutoff, emb_dim):
         super().__init__()
-        self.embed_node_x = nn.Embedding(num_species, 8)
-        self.embed_node_z = nn.Embedding(num_species, 8)
+        self.embed_node_x = nn.Embedding(num_species, emb_dim)
+        self.embed_node_z = nn.Embedding(num_species, emb_dim)
         self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis=16)
     
     def forward(self, data):
