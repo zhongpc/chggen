@@ -8,6 +8,7 @@ from torch.nn import Softmin
 from typing import Any, List
 import numpy as np
 
+# import M3GNet
 
 class Predictor(nn.Module):
     """Predictor for property from structure."""
@@ -60,28 +61,32 @@ class Classifier():
     
     def __call__(
         self,
-        prop_pred: float,
-    ) -> float:
-        """Calculate the probability of obtaining the given property with the structure given."""
+        prop_pred: torch.Tensor,
+    ) -> torch.Tensor:
+        """Calculate the probability of obtaining the given property with the structure given.
+        
+        NOTE: prop_pred has the shape like (B,1), where B is the number of structure in the batch.
+        """
         probs = Softmin(dim=-1)(torch.abs(prop_pred - self.disc_props))
-        prob = probs[self.prop_given_id].detach().item()
+        prob = probs[:,self.prop_given_id].unsqueeze(dim=1)
         return prob
 
 if __name__ == "__main__":
-    
+
     predictor = Predictor()
-    classifier = Classifier(prop_given = 0.05)
+    classifier = Classifier(prop_given = 0.0)
     
-    print('-'*10, 'Testing', '-'*10)
-    print(classifier(prop_pred = -0.1))
-    print(classifier(prop_pred = 0.04))
-    print(classifier(prop_pred = 0.05))
-    print(classifier(prop_pred = 0.06))
-    print(classifier(prop_pred = 0.1))
+    # print('-'*10, 'Testing', '-'*10)
+    # print(classifier(prop_pred = -0.1))
+    # print(classifier(prop_pred = 0.04))
+    # print(classifier(prop_pred = 0.05))
+    # print(classifier(prop_pred = 0.06))
+    # print(classifier(prop_pred = 0.1))
     
     print('-'*10, 'Using', '-'*10)
     structure = torch.randn(size=(10,3), requires_grad=True)
     prop_pred = predictor(structure)
+    prop_pred = torch.Tensor([[-0.1],[0.0],[0.1]])
     print(prop_pred)
     print(classifier(prop_pred))
     

@@ -1,5 +1,4 @@
 from typing import Any, Dict
-import hydra
 import numpy as np
 import omegaconf
 import torch
@@ -9,13 +8,12 @@ from torch.nn import functional as F
 from torch_scatter import scatter
 from tqdm import tqdm
 from omegaconf import OmegaConf
+
+from torch.optim.lr_scheduler import ExponentialLR
 from pymatgen.core import Structure, Lattice, Species, Element
 
 from chgnet.graph.converter import CrystalGraphConverter
 from chgnet.model.model import BatchedGraph
-
-from torch.optim.lr_scheduler import ExponentialLR
-
 
 from chggen.common.data_utils import (
     EPSILON, cart_to_frac_coords, mard, lengths_angles_to_volume,
@@ -26,7 +24,7 @@ from chggen.pl_modules.embeddings import KHOT_EMBEDDINGS
 from chggen.pl_modules.encoder import CHGNet_encoder
 from chggen.pl_modules.decoder import NequipDecoder, GemNetTDecoder
 
-
+from chggen.pl_modules.condition import Classifier
 
 def build_mlp(in_dim, hidden_dim, fc_num_layers, out_dim):
     mods = [nn.Linear(in_dim, hidden_dim), nn.ReLU()]
@@ -48,7 +46,6 @@ class BaseModule(pl.LightningModule):
         scheduler = ExponentialLR(opt, gamma=0.95)
         return {"optimizer": opt, "lr_scheduler": scheduler, "monitor": "val_loss"}
 
-
 class CHGGen(BaseModule):
     def __init__(self, 
                  hparams_dict = {'latent_dim': 64, 'hidden_dim': 128, 'property_dim': 1, 'load_pretrain': True, 'fc_num_layers': 1, 
@@ -62,13 +59,8 @@ class CHGGen(BaseModule):
                                  'decoder': 'gemnet'},
                  lattice_scaler = None,
                  **kwargs) -> None:
-
-        # hparams_dict.update(kwargs)
-        # aaa = OmegaConf.create(hparams_dict)
-        # self.hparams = OmegaConf.create(hparams_dict)
-
         super().__init__()
-
+        
         self.save_hyperparameters(OmegaConf.create(hparams_dict))
         self.lattice_scaler = lattice_scaler
 
@@ -79,17 +71,13 @@ class CHGGen(BaseModule):
             self.encoder = CHGNet_encoder()
             self.encoder.return_crys_feature = True
 
-        #hydra.utils.instantiate(self.hparams.decoder)
-
         if self.hparams.decoder == 'nequip':
             self.decoder = NequipDecoder()
         else:
-            self.decoder = GemNetTDecoder(hidden_dim= self.hparams.hidden_dim,
-                                      latent_dim= self.hparams.latent_dim,
-                                      )
-        
-        
-
+            self.decoder = GemNetTDecoder(
+                hidden_dim= self.hparams.hidden_dim, 
+                latent_dim= self.hparams.latent_dim,
+            )
 
         self.fc_mu = nn.Linear(self.hparams.latent_dim,
                                self.hparams.latent_dim)
@@ -224,8 +212,10 @@ class CHGGen(BaseModule):
                 cur_cart_coords = frac_to_cart_coords(
                     cur_frac_coords, lengths, angles, num_atoms)
                 
-                pred_cart_coord_diff = pred_cart_coord_diff / sigma 
+                pred_cart_coord_diff = pred_cart_coord_diff / sigma
                 cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart
+
+                
                 cur_frac_coords = cart_to_frac_coords(
                     cur_cart_coords, lengths, angles, num_atoms)
 
@@ -253,19 +243,17 @@ class CHGGen(BaseModule):
                 is_traj=True))
 
         return output_dict
-    
 
-    def langevin_dynamics_guidance(self, z, ld_kwargs, gt_num_atoms=None, gt_atom_types=None):
-        """
-        decode crystral structure from latent embeddings.
-        ld_kwargs: args for doing annealed langevin dynamics sampling:
-            n_step_each:  number of steps for each sigma level.
-            step_lr:      step size param.
-            min_sigma:    minimum sigma to use in annealed langevin dynamics.
-            save_traj:    if <True>, save the entire LD trajectory.
-            disable_bar:  disable the progress bar of langevin dynamics.
-        gt_num_atoms: if not <None>, use the ground truth number of atoms.
-        gt_atom_types: if not <None>, use the ground truth atom types.
+    def langevin_dynamics_guidance(self, z, prop_guidance, ld_kwargs, gt_num_atoms=None, gt_atom_types=None):
+        """decode crystral structure from latent embeddings.
+            ld_kwargs: args for doing annealed langevin dynamics sampling:
+                n_step_each:  number of steps for each sigma level.
+                step_lr:      step size param.
+                min_sigma:    minimum sigma to use in annealed langevin dynamics.
+                save_traj:    if <True>, save the entire LD trajectory.
+                disable_bar:  disable the progress bar of langevin dynamics.
+            gt_num_atoms: if not <None>, use the ground truth number of atoms.
+            gt_atom_types: if not <None>, use the ground truth atom types.
         """
         if ld_kwargs.save_traj:
             all_frac_coords = []
@@ -301,7 +289,6 @@ class CHGGen(BaseModule):
                     cur_frac_coords) * torch.sqrt(step_size * 2)
                 pred_cart_coord_diff, pred_atom_types = self.decoder(
                     z, cur_frac_coords, cur_atom_types, num_atoms, lengths, angles)
-                
                 # add the probability gradient
                 # compute the property via  encoder 
                 structure_list = self.get_pymatgen_structure(lengths, angles, num_atoms, cur_frac_coords, cur_atom_types)
@@ -313,7 +300,7 @@ class CHGGen(BaseModule):
                                     angle_basis_expansion=self.encoder.angle_basis_expansion,
                                     compute_stress= False,
                                 )
-                
+
                 g = batched_graph
 
                 atom_positions = g.atom_positions
@@ -321,15 +308,20 @@ class CHGGen(BaseModule):
                 prediction = self.encoder._compute( batched_graph,
                                                     return_crystal_feas= True,
                                                 )
-                
+
                 z_all = prediction['crystal_fea']
-                c = self.predict_property(z_all)  # c is the property from a regressor, i.e. c = (c|R)
-                ## TODO: change the regression problem into a classfication probability
-
-                # force is d(property) / d (cart_coord) ## TODO: add log(P(c|R)) to get the actural conditional prob
-                force = torch.autograd.grad(c.sum(), g.atom_positions, create_graph=True, retain_graph=True)
-
                 
+                c = self.predict_property(z_all)    # c is the property from a regressor, i.e. c = (c|R)
+                # change the regression problem into a classfication probability
+                classifier = Classifier(prop_guidance)
+                p_c = classifier(c)                   # c is 3*1 matrix.
+                print('-'*100)
+                # force is d(property) / d (cart_coord) # add log(P(c|R)) to get the actural conditional prob
+                log_p_c = torch.log(p_c)
+                force = torch.autograd.grad(log_p_c, g.atom_positions, grad_outputs=torch.ones(log_p_c.shape), create_graph=True, retain_graph=True)
+                print(force)
+                print('-'*100)
+
                 # c_ = c.repeat_interleave(num_atoms)
 
                 cur_cart_coords = frac_to_cart_coords(
@@ -338,6 +330,7 @@ class CHGGen(BaseModule):
                 ## TODO: update the langevin dynamics with property gradient (momentum)
                 beta_c = 1e-3 ## add to init
                 pred_cart_coord_diff = pred_cart_coord_diff / sigma + beta_c *  force
+                
                 cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart
                 cur_frac_coords = cart_to_frac_coords(
                     cur_cart_coords, lengths, angles, num_atoms)
@@ -367,7 +360,6 @@ class CHGGen(BaseModule):
 
         return output_dict
     
-
     def get_pymatgen_structure(self, lengths, angles, num_atoms, frac_coords, atom_types):
         batch = torch.arange(len(num_atoms))
         batch = batch.repeat_interleave(num_atoms)
@@ -379,17 +371,17 @@ class CHGGen(BaseModule):
                 continue
             Latt = Lattice.from_parameters(a = lengths[ii,0], b = lengths[ii,1], c = lengths[ii,2],
                                         alpha= angles[ii, 0], beta= angles[ii,1], gamma=angles[ii, 2])
-                                        
+
             frac_ = frac_coords[indices]
             type_ = atom_types[indices]
             species_ = [Element.from_Z(ele_Z) for ele_Z in type_]
-            
+
             s_gen = Structure(lattice= Latt , species= species_, coords= frac_.detach().numpy(),
                             to_unit_cell=False,coords_are_cartesian=False)
-            
+
             s_list.append(s_gen)
         return s_list 
-    
+
     def get_crystal_graph(self, pymatgen_structure_list):
         crystal_graph_list = []
         for s in pymatgen_structure_list:
@@ -397,6 +389,8 @@ class CHGGen(BaseModule):
             crystal_graph_list.append(crystal_graph)
 
         return crystal_graph_list
+
+
 
     def sample(self, num_samples, ld_kwargs):
         z = torch.randn(num_samples, self.hparams.hidden_dim,
@@ -455,7 +449,6 @@ class CHGGen(BaseModule):
         cart_coords = cart_coords + cart_noises_per_atom
         noisy_frac_coords = cart_to_frac_coords(
             cart_coords, pred_lengths, pred_angles, batch.num_atoms)
-
         # pred_atom_types is the (atomic numer - 1)
         pred_cart_coord_diff, pred_atom_types = self.decoder(
             z, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
