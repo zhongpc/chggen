@@ -39,7 +39,7 @@ class BaseModule(pl.LightningModule):
         # populate self.hparams with args and kwargs automagically!
         self.save_hyperparameters()
 
-    def configure_optimizers(self, lr = 1e-3, use_lr_scheduler = True):
+    def configure_optimizers(self, lr = 1e-2, use_lr_scheduler = True):
         opt = torch.optim.Adam(self.parameters(), lr= lr)
         if use_lr_scheduler:
             return [opt]
@@ -67,9 +67,14 @@ class CHGGen(BaseModule):
         if self.hparams.load_pretrain:
             self.encoder = CHGNet_encoder().load()
             self.encoder.return_crys_feature = True
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+
         else:
             self.encoder = CHGNet_encoder()
             self.encoder.return_crys_feature = True
+            for param in self.encoder.parameters():
+                param.requires_grad = False
 
         if self.hparams.decoder == 'nequip':
             self.decoder = NequipDecoder()
@@ -244,6 +249,7 @@ class CHGGen(BaseModule):
 
         return output_dict
 
+    # @torch.no_grad()
     def langevin_dynamics_guidance(self, z, prop_guidance, ld_kwargs, gt_num_atoms=None, gt_atom_types=None):
         """decode crystral structure from latent embeddings.
             ld_kwargs: args for doing annealed langevin dynamics sampling:
@@ -255,11 +261,14 @@ class CHGGen(BaseModule):
             gt_num_atoms: if not <None>, use the ground truth number of atoms.
             gt_atom_types: if not <None>, use the ground truth atom types.
         """
+
         if ld_kwargs.save_traj:
             all_frac_coords = []
             all_pred_cart_coord_diff = []
             all_noise_cart = []
             all_atom_types = []
+
+        # self.classifier.to(self.device)
 
         # obtain key stats.
         num_atoms, _, lengths, angles, composition_per_atom = self.decode_stats(
@@ -276,7 +285,10 @@ class CHGGen(BaseModule):
             cur_atom_types = gt_atom_types
 
         # init coords.
-        cur_frac_coords = torch.rand((num_atoms.sum(), 3), device=z.device, requires_grad = True)
+        cur_frac_coords = torch.rand((num_atoms.sum(), 3), device=z.device, requires_grad = False)
+        
+        # init classfier
+        classifier = Classifier(prop_given= prop_guidance)
 
         # annealed langevin dynamics.
         for sigma in tqdm(self.sigmas, total=self.sigmas.size(0), disable=ld_kwargs.disable_bar):
@@ -292,6 +304,10 @@ class CHGGen(BaseModule):
                 # add the probability gradient
                 # compute the property via  encoder 
                 structure_list = self.get_pymatgen_structure(lengths, angles, num_atoms, cur_frac_coords, cur_atom_types)
+                
+                for s_gen in structure_list:
+                    print(s_gen.composition.reduced_formula)
+                    
                 crystal_graph_list = self.get_crystal_graph(structure_list)
 
                 batched_graph = BatchedGraph.from_graphs(
@@ -304,23 +320,31 @@ class CHGGen(BaseModule):
                 g = batched_graph
 
                 atom_positions = g.atom_positions
-
                 prediction = self.encoder._compute( batched_graph,
-                                                    return_crystal_feas= True,
-                                                )
-
+                                                        compute_force = ld_kwargs.compute_force,
+                                                        return_crystal_feas= True,
+                                                    )
                 z_all = prediction['crystal_fea']
-                
+
+                if ld_kwargs.compute_force:
+                    forces = prediction['f']
+                    print(forces)
+                    batch_forces = torch.cat(forces, dim = 0)
+
                 c = self.predict_property(z_all)    # c is the property from a regressor, i.e. c = (c|R)
                 # change the regression problem into a classfication probability
-                classifier = Classifier(prop_guidance)
-                p_c = classifier(c)                   # c is 3*1 matrix.
-                print('-'*100)
-                # force is d(property) / d (cart_coord) # add log(P(c|R)) to get the actural conditional prob
+                
+                p_c = classifier(c)              
                 log_p_c = torch.log(p_c)
-                force = torch.autograd.grad(log_p_c, g.atom_positions, grad_outputs=torch.ones(log_p_c.shape), create_graph=True, retain_graph=True)
-                print(force)
-                print('-'*100)
+                c_grad = torch.autograd.grad(log_p_c, g.atom_positions, 
+                                             grad_outputs=torch.ones(log_p_c.shape, device = log_p_c.device), 
+                                             create_graph=True, retain_graph=True)
+                batch_c_grad = torch.cat(c_grad, dim = 0)
+
+                # if ld_kwargs.compute_force is True:
+                #     forces = prediction['forces']
+
+                # return batch_force
 
                 # c_ = c.repeat_interleave(num_atoms)
 
@@ -328,9 +352,17 @@ class CHGGen(BaseModule):
                     cur_frac_coords, lengths, angles, num_atoms)
                 
                 ## TODO: update the langevin dynamics with property gradient (momentum)
-                beta_c = 1e-3 ## add to init
-                pred_cart_coord_diff = pred_cart_coord_diff / sigma + beta_c *  force
-                
+                # beta_c = 1e-3 ## TODO: add to ld_kwargs 
+                # beta_f = 1e-4 ## TODO: add to ld_kwargs
+
+
+                ## TODO: double check the scale and sign !
+
+                if ld_kwargs.compute_force == True:
+                    pred_cart_coord_diff = pred_cart_coord_diff / sigma  +  ld_kwargs.beta_c * batch_c_grad  + ld_kwargs.beta_f * batch_forces
+                else:
+                    pred_cart_coord_diff = pred_cart_coord_diff / sigma  +  ld_kwargs.beta_c * batch_c_grad 
+               
                 cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart
                 cur_frac_coords = cart_to_frac_coords(
                     cur_cart_coords, lengths, angles, num_atoms)
@@ -361,22 +393,21 @@ class CHGGen(BaseModule):
         return output_dict
     
     def get_pymatgen_structure(self, lengths, angles, num_atoms, frac_coords, atom_types):
-        batch = torch.arange(len(num_atoms))
+        batch = torch.arange(len(num_atoms), device = num_atoms.device)
         batch = batch.repeat_interleave(num_atoms)
         s_list = []
         for ii in range(len(num_atoms)):
-            indices = torch.where(batch == ii)[0]
-            print(ii, indices)
-            if len(indices) == 0:
+            indices = torch.where(batch == ii)[0] 
+            if len(indices) == 0: # remove the structure with zero atoms
                 continue
-            Latt = Lattice.from_parameters(a = lengths[ii,0], b = lengths[ii,1], c = lengths[ii,2],
-                                        alpha= angles[ii, 0], beta= angles[ii,1], gamma=angles[ii, 2])
+            Latt = Lattice.from_parameters(a = lengths[ii,0].cpu(), b = lengths[ii,1].cpu(), c = lengths[ii,2].cpu(),
+                                        alpha= angles[ii, 0].cpu(), beta= angles[ii,1].cpu(), gamma=angles[ii, 2].cpu())
 
             frac_ = frac_coords[indices]
             type_ = atom_types[indices]
             species_ = [Element.from_Z(ele_Z) for ele_Z in type_]
 
-            s_gen = Structure(lattice= Latt , species= species_, coords= frac_.detach().numpy(),
+            s_gen = Structure(lattice= Latt , species= species_, coords= frac_.cpu().detach().numpy(),
                             to_unit_cell=False,coords_are_cartesian=False)
 
             s_list.append(s_gen)
@@ -386,7 +417,7 @@ class CHGGen(BaseModule):
         crystal_graph_list = []
         for s in pymatgen_structure_list:
             crystal_graph = self.encoder.graph_converter(s)
-            crystal_graph_list.append(crystal_graph)
+            crystal_graph_list.append(crystal_graph.to(self.device))
 
         return crystal_graph_list
 

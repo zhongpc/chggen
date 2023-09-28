@@ -5,6 +5,7 @@
 # Ignore all files in the build directory
 chggen.egg-info/
 test_scripts/
+test_models/
 lightning_logs/
 .vscode/
 .ipynb_checkpoints/

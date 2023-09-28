@@ -33,7 +33,7 @@ class Predictor(nn.Module):
         # TODO: Add a pre-trained property predictor here.
         return structure.mean()
         
-class Classifier():
+class Classifier(nn.Module):
     """Convert the regressor for property to classifier to obtain probability.
     
     Args:
@@ -47,19 +47,22 @@ class Classifier():
     
     def __init__(
         self,
-        prop_given: float,
+        prop_given: torch.Tensor, # a scalar
         bins: int = 200,                                 # Discritize 20 properties.
         interval: List[float, float] = [-0.1, 0.1],      # From -0.1 eV to 0.1 eV.
     ) -> None:                                           # TODO: Rescale E_hull for interval here?
         """Initialize Classifier with bins and interval."""
-        disc_props_bins = torch.linspace(interval[0], interval[1], bins)
+        super(Classifier, self).__init__()
+
+        disc_props_bins = torch.linspace(interval[0], interval[1], bins, device= prop_given.device)
         self.disc_props = (disc_props_bins[1:] + disc_props_bins[:-1])/2
+
         # Coarse grain the given property to nearest discretized property.
         self.prop_given_id = torch.argmin(torch.abs(prop_given - self.disc_props))
-        self.prop_given = self.disc_props[self.prop_given_id]
+        self.prop_given = self.disc_props[self.prop_given_id]        
         return None
     
-    def __call__(
+    def forward(
         self,
         prop_pred: torch.Tensor,
     ) -> torch.Tensor:
@@ -67,6 +70,7 @@ class Classifier():
         
         NOTE: prop_pred has the shape like (B,1), where B is the number of structure in the batch.
         """
+        self.disc_props.to(device= prop_pred.device)
         probs = Softmin(dim=-1)(torch.abs(prop_pred - self.disc_props))
         prob = probs[:,self.prop_given_id].unsqueeze(dim=1)
         return prob
