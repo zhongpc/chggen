@@ -35,12 +35,12 @@ def mkdir(path: str):
         print("Folder exists")
     return path
 
-train_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv',
+train_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv', # train.csv
 name = 'train_perov',
 prop_list = ['heat_all'],
 )
 
-val_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv',
+val_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv', # val.csv
 name = 'val_perov',
 prop_list = ['heat_all'],
 )

@@ -30,8 +30,9 @@ ld_kwargs = SimpleNamespace(n_step_each = 10,
                             save_traj = False,
                             disable_bar = False,
                             compute_force = False,
-                            beta_c = 0, 
-                            beta_f = 0)
+                            beta_c = 0, # property update rate
+                            beta_f = 0, # atomic force update rate
+                            )
 
 z = torch.rand(1, 64, requires_grad= True, device = device)
 results = chggen.langevin_dynamics_guidance(z = z, 

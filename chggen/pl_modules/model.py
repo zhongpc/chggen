@@ -342,20 +342,8 @@ class CHGGen(BaseModule):
                                              create_graph=True, retain_graph=True)
                 batch_c_grad = torch.cat(c_grad, dim = 0)
 
-                # if ld_kwargs.compute_force is True:
-                #     forces = prediction['forces']
-
-                # return batch_force
-
-                # c_ = c.repeat_interleave(num_atoms)
-
                 cur_cart_coords = frac_to_cart_coords(
                     cur_frac_coords, lengths, angles, num_atoms)
-                
-                ## TODO: update the langevin dynamics with property gradient (momentum)
-                # beta_c = 1e-3 ## TODO: add to ld_kwargs 
-                # beta_f = 1e-4 ## TODO: add to ld_kwargs
-
 
                 ## TODO: double check the scale and sign !
 
@@ -781,9 +769,11 @@ class CHGGen(BaseModule):
 
 
     def on_train_epoch_end(self):
+        # read from self.log_dict
         metrics = self.trainer.logged_metrics
 
         ## TODO: change the loss_step to average loss of the epoch
+        ## TODO: get loss_avg
         print(f"Epoch {self.current_epoch} - num_atom_loss: {metrics.get('train_natom_loss_step', 0):.4f}")
         print(f"Epoch {self.current_epoch} - lattice_loss: {metrics.get('train_lattice_loss_step', 0):.4f}")
         print(f"Epoch {self.current_epoch} - coord_loss: {metrics.get('train_coord_loss_step', 0):.4f}")
