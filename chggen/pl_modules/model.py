@@ -661,12 +661,6 @@ class CHGGen(BaseModule):
         return kld_loss
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        # self.encoder.to(self.device)
-        # self.encoder.composition_model.to(self.device)
-
-        # self.encoder.device = self.device
-        # self.encoder.composition_model.device = self.device
-    
         teacher_forcing = (
             self.current_epoch <= self.hparams.teacher_forcing_max_epoch)
         outputs = self(batch, teacher_forcing, training=True)
@@ -773,4 +767,32 @@ class CHGGen(BaseModule):
                 f'{prefix}_type_accuracy': type_accuracy,
             })
 
+        else:
+            self.log(f'{prefix}_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+            self.log(f'{prefix}_natom_loss', num_atom_loss, on_step=True, on_epoch=True, prog_bar=True)
+            self.log(f'{prefix}_lattice_loss', lattice_loss, on_step=True, on_epoch=True, prog_bar=True)
+            self.log(f'{prefix}_coord_loss', coord_loss, on_step=True, on_epoch=True, prog_bar=True)
+            self.log(f'{prefix}_type_loss', type_loss, on_step=True, on_epoch=True, prog_bar=True)
+            self.log(f'{prefix}_kld_loss', kld_loss, on_step=True, on_epoch=True, prog_bar=True)
+            self.log(f'{prefix}_composition_loss', composition_loss, on_step=True, on_epoch=True, prog_bar=True)
+           
         return log_dict, loss
+
+
+    def on_train_epoch_end(self):
+        # train_loss = self.log_dict['train_loss']
+        # all_preds = torch.stack(self.training_step_outputs)
+        # do something with all preds
+
+        metrics = self.trainer.logged_metrics
+
+        ## TODO: change the loss_step to average loss of the epoch
+        print(f"Epoch {self.current_epoch} - num_atom_loss: {metrics.get('train_natom_loss_step', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - lattice_loss: {metrics.get('train_lattice_loss_step', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - coord_loss: {metrics.get('train_coord_loss_step', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - type_loss: {metrics.get('train_type_loss_step', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - kld_loss: {metrics.get('train_kld_loss_step', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - composition_loss: {metrics.get('train_composition_loss_step', 0):.4f}")
+            
+
+        

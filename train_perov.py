@@ -10,7 +10,8 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch_geometric.data import Batch
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
+
 
 
 import warnings
@@ -34,7 +35,7 @@ def mkdir(path: str):
         print("Folder exists")
     return path
 
-train_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/train.csv',
+train_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv',
 name = 'train_perov',
 prop_list = ['heat_all'],
 )
@@ -129,10 +130,10 @@ chggen = CHGGen(lattice_scaler= lattice_scaler,
 # chggen.to(device=device)
 # trainer = pl.Trainer(devices=2, accelerator="gpu")
 
-for name, param in chggen.named_parameters():
-    print(name)
-    if "encoder" in name:
-        param.requires_grad = False
+# for name, param in chggen.named_parameters():
+#     print(name)
+#     if "encoder" in name:
+#         param.requires_grad = False
 
 
 
@@ -142,7 +143,7 @@ checkpoint_callback = ModelCheckpoint(
     filename='{epoch}',        # Save the checkpoint after every epoch
     save_top_k=-1,            # Set to -1 to save all checkpoints
     save_last=True,           # Save the last model too, useful for resuming
-    every_n_train_steps=1,     # Save every epoch (assuming you're validating every epoch)
+    every_n_train_steps=100,     # Save every epoch (assuming you're validating every epoch)
     verbose=True              # Print save messages for debugging
 )
 
@@ -150,8 +151,8 @@ checkpoint_callback = ModelCheckpoint(
 trainer = pl.Trainer(accelerator = "gpu", 
                      devices = [4],
                      max_epochs= 10,
-                     callbacks=[checkpoint_callback],
-                    #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training, fixed the CHGNet weights
+                     callbacks=[checkpoint_callback, TQDMProgressBar(refresh_rate = 0)],
+                    #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training
                      )
 
 trainer.fit(model= chggen, datamodule= datamodule)

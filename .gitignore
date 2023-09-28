@@ -9,6 +9,8 @@ test_models/
 lightning_logs/
 .vscode/
 .ipynb_checkpoints/
+__pycache__/
+
 
 # Ignore specific file
 myconfig.properties
