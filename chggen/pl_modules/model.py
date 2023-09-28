@@ -38,7 +38,8 @@ class BaseModule(pl.LightningModule):
         super().__init__()
         # populate self.hparams with args and kwargs automagically!
         self.save_hyperparameters()
-
+    
+    ## TODO: generalize the optimizer 
     def configure_optimizers(self, lr = 1e-2, use_lr_scheduler = True):
         opt = torch.optim.Adam(self.parameters(), lr= lr)
         if use_lr_scheduler:
@@ -780,10 +781,6 @@ class CHGGen(BaseModule):
 
 
     def on_train_epoch_end(self):
-        # train_loss = self.log_dict['train_loss']
-        # all_preds = torch.stack(self.training_step_outputs)
-        # do something with all preds
-
         metrics = self.trainer.logged_metrics
 
         ## TODO: change the loss_step to average loss of the epoch
@@ -793,6 +790,3 @@ class CHGGen(BaseModule):
         print(f"Epoch {self.current_epoch} - type_loss: {metrics.get('train_type_loss_step', 0):.4f}")
         print(f"Epoch {self.current_epoch} - kld_loss: {metrics.get('train_kld_loss_step', 0):.4f}")
         print(f"Epoch {self.current_epoch} - composition_loss: {metrics.get('train_composition_loss_step', 0):.4f}")
-            
-
-        
