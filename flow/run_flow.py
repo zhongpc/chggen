@@ -39,17 +39,17 @@ np.random.seed(0)
 
 num_layers= 4       # Number of layers in flow model.
 hidden_size = 32    # Number of hidden units in each MLP layer.
+dim = 64            # Feature dimension of data.
 
 # Data.
-data = torch.randn(100,6)   # 100 samples with dimension 6.
+data = torch.randn(100,dim)   # 100 samples with dimension dim.
 
 # Generate masks for reversible affine transformation.
-dim = 6
-num_layers = 4
 masks = torch.zeros(num_layers, dim, dtype=torch.int)
 for num_layer in range(num_layers):
     masks[num_layer, :dim//2] = 1 if num_layer % 2 == 0 else 0
     masks[num_layer, dim//2:] = 1   if num_layer % 2 == 1 else 0
+print(masks)
 
 # Initialize model.
 NVP_model = RealNVP(masks, hidden_size)
