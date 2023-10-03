@@ -120,20 +120,38 @@ class E_GCL(nn.Module):
         self,
         l: torch.Tensor,
     ) -> torch.Tensor:
-        """Compute lattice feature L^TL from batched lattice.
+        """Compute lattice feature LL^T from batched lattice.
         
         Args:
             l (Tensor): lattice vectors with shape (batched number of nodes, 
                 lattice index (3), components (3)).
         
         Returns:
-            l_feat (Tensor): lattice feature L^TL with shape (batched number 
-            of nodes, reshaped lattice feature L^TL (9)).
+            l_feat (Tensor): lattice feature LL^T with shape (batched number 
+            of nodes, reshaped lattice feature LL^T (9)).
+            
+        NOTE: If the lattice is defined as:
+            L = [[l1],
+                [l2],
+                [l3]]
+              = [[l11, l12, l13],
+                [l21, l22, l23],
+                [l31, l32, l33]]
+            Then the lattice feature should be LL^T to accommodate equivariance.
+            (LR)@(LR)^T = LRR^TL^T = LL^T
+            
+            If the lattice is defined as:
+            L = [[l1, l2, l3]]
+              = [[l11, l21, l31],
+                [l12, l22, l32],
+                [l13, l23, l33]]
+            Then the lattice feature should be L^TL to accommodate equivariance.
+            (RL)^T@(RL) = L^TR^TRL = L^TL
             
         TODO: Adapt it with Niggli strategy.
         """                    
-        l_T = torch.transpose(l, dim0=1, dim1=2)            # l_T [batch, abc (3), xyz (3)]
-        l_feat = torch.einsum('iax,ixb->iab', l_T, l)       
+        # l_T = torch.transpose(l, dim0=1, dim1=2)            # l_T [batch, abc (3), xyz (3)]
+        l_feat = torch.einsum('iax,ibx->iab', l, l)       
         l_feat = l_feat.reshape(-1, l.shape[1]*l.shape[2])  # l_feat [batch, feature (9)]
         return l_feat
         
@@ -314,7 +332,7 @@ class EGNN(nn.Module):
         agg = unsorted_segment_mean(h, atom_owners, num_segments=atom_owners.max().item()+1)
         l_weight = self.embedding_out_l_weight(agg).reshape(-1, self.x_dim, self.x_dim)
         l = l[get_reduced_id_from_tensor(atom_owners)]          # Reduce l to each structure one lattice.
-        l = torch.einsum('iax,ixb->iab', l, l_weight)                        # [# structure, abc (3), xyz (3)]
+        l = torch.einsum('iax,ixb->iab', l_weight, l)                        # [# structure, abc (3), xyz (3)]
         x = self.embedding_out_x(h)
         return l, x
     
@@ -485,6 +503,22 @@ if __name__ == "__main__":
     )
     h = z_one_hot.float()
     atom_owners = atom_owners.long()
+    
     # Run EGNN
-    l, x = egnn(h, l, f, edges, edge_attr, atom_owners)
-    print(l.shape, x.shape)
+    # l, x = egnn(h, l, f, edges, edge_attr, atom_owners)
+    # print(l, x)
+    
+    from e3nn import o3
+    R = o3.rand_matrix(1)[0]
+    
+    out = egnn(h, l, f, edges, edge_attr, atom_owners)
+    print('-'*30, 'BEFORE ROTATION', '-'*30)
+    print('lattice:\n', torch.einsum('iax,xb->iab', out[0], R))
+    print('fractional coordinates:\n', out[1])
+    
+    
+    l = torch.einsum('iax,xb->iab', l,R)
+    out = egnn(h, l, f, edges, edge_attr, atom_owners)
+    print('-'*30, 'AFTER ROTATION', '-'*30)
+    print('lattice:\n',  out[0])
+    print('fractional coordinates:\n', out[1])
