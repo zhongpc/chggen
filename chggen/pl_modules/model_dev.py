@@ -18,6 +18,7 @@ from chgnet.model.model import BatchedGraph
 from chggen.common.data_utils import (
     EPSILON, cart_to_frac_coords, mard, lengths_angles_to_volume,
     frac_to_cart_coords, min_distance_sqr_pbc)
+
 from chggen.pl_modules.embeddings import MAX_ATOMIC_NUM
 from chggen.pl_modules.embeddings import KHOT_EMBEDDINGS
 
@@ -155,15 +156,24 @@ class CHGGen(BaseModule):
 
         z = self.reparameterize(mu, log_var)
         return mu, log_var, z
+    
+    def estimate_lattice(self, gt_num_atoms):
+        
 
-    def decode_stats(self, z, gt_num_atoms=None, gt_lengths=None, gt_angles=None,
+    def decode_stats(self, crys_fea, gt_num_atoms = None, gt_lengths=None, gt_angles=None,
                      teacher_forcing=False):
         """
-        decode key stats from latent embeddings.
+        decode key stats from latent crystal features (deterministic).
         batch is input during training for teach-forcing.
+
+        gt_num_atoms is a must, as crys_fea is an intensive value
+        prediction on pbc-related perperty is poorly described by crys_fea
+
         """
+
         if gt_num_atoms is not None:
-            num_atoms = self.predict_num_atoms(z)
+            num_atoms = torch.randint(low = 2, high= 20, size = (crys_fea.shape[0],), device = crys_fea.device)
+
             lengths_and_angles, lengths, angles = (
                 self.predict_lattice(z, gt_num_atoms))
             composition_per_atom = self.predict_composition(z, gt_num_atoms)
@@ -376,7 +386,8 @@ class CHGGen(BaseModule):
         
         graphs = [g.to(self.device) for g in batch.crys_graph]
         
-        mu, log_var, z = self.encode(graphs)
+        # mu, log_var, z = self.encode(graphs)
+
         (pred_num_atoms, pred_lengths_and_angles, pred_lengths, pred_angles,
          pred_composition_per_atom) = self.decode_stats(
             z, batch.num_atoms, batch.lengths, batch.angles, teacher_forcing)

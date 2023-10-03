@@ -4,6 +4,20 @@ from torch import nn
 import torch
 from typing import Tuple
 
+from pymatgen.core import Structure
+import numpy as np
+
+from chggen.common.data_utils import (
+    EPSILON, cart_to_frac_coords, mard, lengths_angles_to_volume,
+    frac_to_cart_coords, min_distance_sqr_pbc)
+from chgnet.model.model import BatchedGraph
+
+from chgnet.graph.converter import CrystalGraphConverter
+from chggen.pl_modules.encoder import CHGNet_encoder
+
+
+
+
 class E_GCL(nn.Module):
     """E(n) equivariant convolutional layer.
     
@@ -33,6 +47,7 @@ class E_GCL(nn.Module):
         normalize: bool = False,
         coords_agg: str = "mean",
         tanh: bool = False,
+        x_dim: int = 3,
     ) -> None:
         super(E_GCL, self).__init__()
         input_edge = input_nf * 2
@@ -43,8 +58,8 @@ class E_GCL(nn.Module):
         self.tanh = tanh
         self.epsilon = 1e-8             # Small number to avoid division by zero.
         self.ft_basis = ft_basis        # Number of FT basis to compute.
-        edge_coords_nf = 3 * ft_basis   # Number of features in the edge coordinates.
-        edge_lattice_nf = 9             # Number of features in the edge lattice.
+        edge_coords_nf = x_dim * ft_basis   # Number of features in the edge coordinates.
+        edge_lattice_nf = x_dim **2             # Number of features in the edge lattice.
         
         self.edge_mlp = nn.Sequential(
             nn.Linear(input_edge + edge_coords_nf + edge_lattice_nf + edges_in_d, hidden_nf),
@@ -118,10 +133,12 @@ class E_GCL(nn.Module):
         Returns:
             Tensor: lattice feature L^TL reshaped to 1D.
         TODO: Adapt it with Niggas strategy.
-        """
-        
-        l_feat = (l.T * l).reshape(9)
-        return l_feat
+        """ 
+        l = lattice # l [batch, xyz, abc]
+        l_T = torch.transpose(lattice, dim0=1, dim1=2) # l_T [batch, abc, xyz]
+        l_gram = torch.einsum('iax,ixb->iab', l_T, l) # l_gram [batch=i, abc]
+
+        return l_gram.reshape(-1, l.shape[2]**2 )
         
     def node_model(
         self,
@@ -152,6 +169,29 @@ class E_GCL(nn.Module):
         if self.residual:
             out = h + out
         return out, agg
+    
+    def coord2strucfactor(
+        self,
+        edge_index: torch.Tensor,
+        coord: torch.Tensor,
+        lattice: torch.Tensor,
+        ft_basis: int,
+    ) -> torch.Tensor:
+        """Compute FT bases expansion of relative fractional distance.
+        (f1, f2, f3) -> (cos(2pi*f1), sin(2pi*f1), cos(2pi*f2), sin(2pi*f2), 
+        cos(2pi*f3), sin(2pi*f3)), ...
+        
+        Args:
+            edge_index (Tensor): edge indices.
+            coord (Tensor): coordinates.
+            ft_basis (int): number of FT basis to compute.
+        """
+        row, col = edge_index
+        coord_diff = coord[row] - coord[col]
+        ft_feat = torch.arange(2, ft_basis+2, 2) * torch.pi * coord_diff.unsqueeze(-1)
+        ft_feat = torch.cat([torch.sin(ft_feat), torch.cos(ft_feat)], dim = -1) # [batch, x_dim, f_basis]
+        ft_feat = ft_feat.reshape(-1, ft_basis * ft_feat.shape[1])
+        return ft_feat 
     
     def coord2ft(
         self,
@@ -200,9 +240,14 @@ class E_GCL(nn.Module):
             Tensor: next layer edge features.
         """
         row, col = edge_index
-        l_feat = self.lattice2feat(l)*torch.ones((len(coord)*3, 1))
-        ft_feat = self.coord2ft(edge_index, coord, self.ft_basis)
-        edge_feat = self.edge_model(h[row], h[col], l_feat, ft_feat, edge_attr)
+        l_feat = self.lattice2feat(l) 
+
+        # ft_feat = self.coord2strucfactor(edge_index, coord, lattice= l , ft_basis= self.ft_basis)
+        ft_feat = self.coord2ft(edge_index, coord, ft_basis= self.ft_basis)
+        row_h = h[row]
+        col_h= h[col]
+        l_row = l_feat[row]
+        edge_feat = self.edge_model(h[row], h[col], l_feat[row], ft_feat, edge_attr)
         h, agg = self.node_model(h, edge_index, edge_feat, node_attr)
         
         return h, coord, edge_attr
@@ -237,6 +282,7 @@ class EGNN(nn.Module):
         out_node_nf: int,
         in_edge_nf: int = 0,
         ft_basis: int = 10,
+        x_dim: int = 3,
         device: str = "cpu",
         act_fn: nn.Module = nn.SiLU(),
         n_layers: int = 4,
@@ -265,6 +311,7 @@ class EGNN(nn.Module):
                     attention=attention,
                     normalize=normalize,
                     tanh=tanh,
+                    x_dim= x_dim,
                 ),
             )
         self.to(self.device)
@@ -368,26 +415,89 @@ def get_edges_batch(
 
 
 if __name__ == "__main__":
+    crys_converter = CrystalGraphConverter(atom_graph_cutoff=5,
+                                            bond_graph_cutoff=3)
+    
+    chgnet= CHGNet_encoder.load()
+    
+
     # Dummy parameters
     batch_size = 8
-    n_nodes = 4
+    n_nodes = 5
     n_feat = 1
     x_dim = 3
-    
-    # Dummy variables h, x and fully connected edges
-    h = torch.ones(batch_size * n_nodes, n_feat)
-    x = torch.ones(batch_size * n_nodes, x_dim)
-    l = torch.ones(3,3)
-    edges, edge_attr = get_edges_batch(n_nodes, batch_size)
+
+    # construct a rock salt MgO structure
+    mgo_structure = Structure(
+        lattice=[[0, 2.13, 2.13], [2.13, 0, 2.13], [2.13, 2.13, 0]],
+        species=["Mg", "O"],
+        coords=[[0, 0, 0], [0.5, 0.5, 0.5]],
+    )
+
+    # frac_coords=  mgo_structure.frac_coords
+    # cart_coords = mgo_structure.cart_coords
+    # atom_types = mgo_structure.atomic_numbers,
+    # lengths =  np.array(mgo_structure.lattice.lengths),
+    # angles =  np.array(mgo_structure.lattice.angles),
+    # num_atoms =  mgo_structure.num_sites
+
+    crys_graph = crys_converter(mgo_structure)
+    atom_graph = crys_graph.atom_graph
+
+    crys_graph_list = [crys_graph, crys_graph]
+
+
+    batched_graph = BatchedGraph.from_graphs(
+                                    crys_graph_list,
+                                    bond_basis_expansion=chgnet.bond_basis_expansion,
+                                    angle_basis_expansion=chgnet.angle_basis_expansion,
+                                    compute_stress= False,
+                                )
+
+    batched_atom_graph = batched_graph.batched_atom_graph
+    row = batched_atom_graph[:, 0]
+    col = batched_atom_graph[:, 1]
+
+    edges = [row, col]
+
+    edge_attr = torch.ones(row.shape[0], 1) # TODO: remove or change to resonable attr if necessary
+
+    atom_owners = batched_graph.atom_owners
+
+    # # get graph information from chgnet
+    x = batched_graph.atom_positions # E(3) coordinates 
+    x = torch.cat(x, dim = 0)
+    x = x[atom_owners]
+
+    l = [g.lattice for g in crys_graph_list] # lattice row corresponds to a lattice vector
+    l = torch.stack(l, dim = 0)
+    l = l[atom_owners] # l is the batched lattice consitent with EGNN
+
+    f = [g.atom_frac_coord for g in crys_graph_list]  
+    f = torch.cat(f, dim = 0)
+    f = f[atom_owners] # f is the fractional coords in the batched format
+
+    # TODO: change h to atomic embedding
+    h = torch.ones(l.shape[0], n_feat)
+
+    # # Dummy variables h, x and fully connected edges
+    # h = torch.ones(batch_size * n_nodes, n_feat)
+    # x = torch.ones(batch_size * n_nodes, x_dim)
+    # l = torch.ones(batch_size * n_nodes, x_dim, x_dim) # [b, xyz, abc = 3]  the abc dimension must equal to the xyz dimension
+    # edges, edge_attr = get_edges_batch(n_nodes, batch_size)
+
+
     
     # Initialize EGNN
     egnn = EGNN(
         in_node_nf=n_feat,
-        hidden_nf=32,
+        hidden_nf=37,
         out_node_nf=1,
         in_edge_nf=1,
+        x_dim= x_dim,
+        ft_basis= 10,
     )
     
     # Run EGNN
-    h, x = egnn(h, l, x, edges, edge_attr)
-    print(h.shape, x.shape)
+    h, f = egnn(h, l, f, edges, edge_attr)
+    print(h.shape, f.shape)

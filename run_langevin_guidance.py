@@ -17,6 +17,7 @@ from torch_geometric.data import Data
 from torch import nn
 import torch.nn.functional as F
 
+
 with open('./test_models/chggen.pk', 'rb') as fp:
     chggen = pickle.load(fp)
 
@@ -29,7 +30,7 @@ ld_kwargs = SimpleNamespace(n_step_each = 10,
                             min_sigma = 0,
                             save_traj = False,
                             disable_bar = False,
-                            compute_force = False,
+                            compute_force = True,
                             beta_c = 0, # property update rate
                             beta_f = 0, # atomic force update rate
                             )

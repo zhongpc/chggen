@@ -160,28 +160,6 @@ class NequipDecoder(nn.Module):
         pred_cart_coord_diff, pred_atom_types = self.nequip(data)
         
         return pred_cart_coord_diff, pred_atom_types
-    
-        # cur_pos_cart = frac_to_cart_coords(pred_frac_coords, lengths, angles, num_atoms)
-
-
-
-
-
-
-        # (num_atoms, hidden_dim) (num_crysts, 3)
-        # h, pred_cart_coord_diff = self.gemnet(
-        #     z=z,
-        #     frac_coords=pred_frac_coords,
-        #     atom_types=pred_atom_types,
-        #     num_atoms=num_atoms,
-        #     lengths=lengths,
-        #     angles=angles,
-        #     edge_index=None,
-        #     to_jimages=None,
-        #     num_bonds=None,
-        # )
-        # pred_atom_types = self.fc_atom(h)
-        # return pred_cart_coord_diff, pred_atom_types
 
 
 class NequipLatticeDecoder(nn.Module):
@@ -265,27 +243,4 @@ class NequipLatticeDecoder(nn.Module):
         )
 
         pred_cart_coord_diff, pred_atom_types = self.nequip(data)
-        
         return pred_cart_coord_diff, pred_atom_types
-    
-        # cur_pos_cart = frac_to_cart_coords(pred_frac_coords, lengths, angles, num_atoms)
-
-
-
-
-
-
-        # (num_atoms, hidden_dim) (num_crysts, 3)
-        # h, pred_cart_coord_diff = self.gemnet(
-        #     z=z,
-        #     frac_coords=pred_frac_coords,
-        #     atom_types=pred_atom_types,
-        #     num_atoms=num_atoms,
-        #     lengths=lengths,
-        #     angles=angles,
-        #     edge_index=None,
-        #     to_jimages=None,
-        #     num_bonds=None,
-        # )
-        # pred_atom_types = self.fc_atom(h)
-        # return pred_cart_coord_diff, pred_atom_types
