@@ -38,6 +38,7 @@ def process_csv(input_file, num_workers, niggli, primitive, prop_list):
         result_dict = {
             'mp_id': row['material_id'],
             'cif': crystal_str,
+            'lattice': structure.lattice.matrix,
             'frac_coords': structure.frac_coords,
             'atom_types': structure.atomic_numbers,
             'lengths': np.array(structure.lattice.lengths),
@@ -104,6 +105,7 @@ class CHGNetDataset(Dataset):
             prop_list.append(prop)
 
         crys_graph = data_dict['crys_graph']
+        lattice = data_dict['lattice']
         frac_coords = data_dict['frac_coords']
         atom_types = data_dict['atom_types']
         lengths = data_dict['lengths']
@@ -118,6 +120,7 @@ class CHGNetDataset(Dataset):
                     atom_types=torch.LongTensor(atom_types),
                     lengths=torch.Tensor(lengths).view(1, -1),
                     angles=torch.Tensor(angles).view(1, -1),
+                    lattices=torch.Tensor(lattice).view(1, -1),
                     num_atoms = num_atoms,
                     properties = torch.Tensor(prop_list).view(1, -1),
                     )

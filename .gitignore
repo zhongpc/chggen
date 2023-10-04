@@ -10,6 +10,7 @@ lightning_logs/
 .vscode/
 .ipynb_checkpoints/
 __pycache__/
+chggen/pl_data/__pycache__/
 
 
 # Ignore specific file

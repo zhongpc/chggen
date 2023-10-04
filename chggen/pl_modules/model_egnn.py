@@ -13,17 +13,16 @@ from torch.optim.lr_scheduler import ExponentialLR
 from pymatgen.core import Structure, Lattice, Species, Element
 
 from chgnet.graph.converter import CrystalGraphConverter
-from chgnet.model.model import BatchedGraph
+from chggen.chgnet.chgnet.model.model import BatchedGraph
 
 from chggen.common.data_utils import (
     EPSILON, cart_to_frac_coords, mard, lengths_angles_to_volume,
     frac_to_cart_coords, min_distance_sqr_pbc)
-
 from chggen.pl_modules.embeddings import MAX_ATOMIC_NUM
 from chggen.pl_modules.embeddings import KHOT_EMBEDDINGS
 
 from chggen.pl_modules.encoder import CHGNet_encoder
-from chggen.pl_modules.decoder import NequipDecoder, GemNetTDecoder
+from chggen.pl_modules.decoder_egnn import EGNNDecoder
 
 from chggen.pl_modules.condition import Classifier
 
@@ -58,7 +57,9 @@ class BaseModule(pl.LightningModule):
 class CHGGen(BaseModule):
     def __init__(self, 
                  hparams_dict = {'latent_dim': 256, 'hidden_dim': 128, 'property_dim': 1, 'load_pretrain': True, 'fc_num_layers': 2, 
-                                 'sigma_begin': 10.0, 'sigma_end': 0.01, 'type_sigma_begin': 5.0, 'type_sigma_end': 0.01,
+                                 'sigma_F_begin': 1.0, 'sigma_F_end': 0.01, 
+                                 'sigma_L_begin': 10.0, 'sigma_Lend': 0.01, 
+                                 'type_sigma_begin': 5.0, 'type_sigma_end': 0.01,
                                  'max_atoms': 20, 'predict_property': False, 'num_noise_level': 50, 
                                  'lattice_scale_method': 'scale_length', 
                                  'cost_natom': 1.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 1.0,
@@ -85,9 +86,7 @@ class CHGGen(BaseModule):
             for param in self.encoder.parameters():
                 param.requires_grad = False
 
-        
-        self.decoder_coords = NequipDecoder()
-        self.decoder_lattice = NequipDecoder()
+        self.decoder = EGNNDecoder()
 
         self.fc_mu = nn.Linear(self.hparams.latent_dim,
                                self.hparams.latent_dim)
@@ -108,13 +107,19 @@ class CHGGen(BaseModule):
         if self.hparams.predict_property:
             self.fc_property = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
                                          self.hparams.fc_num_layers, self.hparams.property_dim)
-
-        sigmas = torch.tensor(np.exp(np.linspace(
-            np.log(self.hparams.sigma_begin),
-            np.log(self.hparams.sigma_end),
+        
+        sigmas_F = torch.tensor(np.exp(np.linspace(
+            np.log(self.hparams.sigma_F_begin),
+            np.log(self.hparams.sigma_F_end),
             self.hparams.num_noise_level)), dtype=torch.float32)
-
-        self.sigmas = nn.Parameter(sigmas, requires_grad=False)
+        
+        sigmas_L = torch.tensor(np.exp(np.linspace(
+            np.log(self.hparams.sigma_L_begin),
+            np.log(self.hparams.sigma_L_end),
+            self.hparams.num_noise_level)), dtype=torch.float32)
+        
+        self.sigmas_F = nn.Parameter(sigmas_F, requires_grad=False)
+        self.sigmas_L = nn.Parameter(sigmas_L, requires_grad=False)
 
         type_sigmas = torch.tensor(np.exp(np.linspace(
             np.log(self.hparams.type_sigma_begin),
@@ -156,24 +161,15 @@ class CHGGen(BaseModule):
 
         z = self.reparameterize(mu, log_var)
         return mu, log_var, z
-    
-    def estimate_lattice(self, gt_num_atoms):
-        
 
-    def decode_stats(self, crys_fea, gt_num_atoms = None, gt_lengths=None, gt_angles=None,
+    def decode_stats(self, z, gt_num_atoms=None, gt_lengths=None, gt_angles=None,
                      teacher_forcing=False):
         """
-        decode key stats from latent crystal features (deterministic).
+        decode key stats from latent embeddings.
         batch is input during training for teach-forcing.
-
-        gt_num_atoms is a must, as crys_fea is an intensive value
-        prediction on pbc-related perperty is poorly described by crys_fea
-
         """
-
         if gt_num_atoms is not None:
-            num_atoms = torch.randint(low = 2, high= 20, size = (crys_fea.shape[0],), device = crys_fea.device)
-
+            num_atoms = self.predict_num_atoms(z)
             lengths_and_angles, lengths, angles = (
                 self.predict_lattice(z, gt_num_atoms))
             composition_per_atom = self.predict_composition(z, gt_num_atoms)
@@ -190,31 +186,81 @@ class CHGGen(BaseModule):
     def compute_grad(self, batched_graph, classifier, ld_kwargs):
         # g = batched_graph
         prediction = self.encoder._compute( batched_graph,
-                                            compute_force = ld_kwargs.compute_force,
+                                            compute_force = False,
                                             return_crystal_feas= True,
                                             )
-        z_all = prediction['crystal_fea']
+        crystal_fea_all = prediction['crystal_fea']
+
+        energy = prediction['e']
 
         if ld_kwargs.compute_force:
-            forces = prediction['f']
+            f_grad = torch.autograd.grad(energy.sum(), 
+                                         batched_graph.atom_positions, 
+                                        #  grad_outputs=torch.ones(log_p_c.shape, device = log_p_c.device), 
+                                         create_graph=True, retain_graph=True)
+            
+            forces = [-1 * force_dim for force_dim in f_grad] # in cart_coords
             # print(forces)
             batch_forces = torch.cat(forces, dim = 0).detach()
+
+            del f_grad
         else:
             batch_forces = None
 
-        c = self.predict_property(z_all)    # c is the property from a regressor, i.e. c = (c|R)
+        c = self.predict_property(crystal_fea_all)    # c is the property from a regressor, i.e. c = (c|R)
         # change the regression problem into a classfication probability
         
         p_c = classifier(c)              
         log_p_c = torch.log(p_c)
         c_grad = torch.autograd.grad(log_p_c, batched_graph.atom_positions, 
-                                        grad_outputs=torch.ones(log_p_c.shape, device = log_p_c.device), 
-                                        create_graph=True, retain_graph=False)
+                                        # grad_outputs=torch.ones(log_p_c.shape, device = log_p_c.device), 
+                                        create_graph=True, retain_graph= True)
         batch_c_grad = torch.cat(c_grad, dim = 0).detach()
+        del c_grad
 
         return batch_c_grad, batch_forces
 
 
+    def compute_grad_frac(self, batched_graph, classifier, ld_kwargs):
+        # g = batched_graph
+        prediction = self.encoder._compute( batched_graph,
+                                            compute_force = False,
+                                            return_crystal_feas= True,
+                                            )
+        crystal_fea_all = prediction['crystal_fea']
+
+        energy = prediction['e']
+
+        if ld_kwargs.compute_force:
+            E_grad_f = torch.autograd.grad(energy.sum(), 
+                                         batched_graph.atom_frac_coords, 
+                                        #  grad_outputs=torch.ones(log_p_c.shape, device = log_p_c.device), 
+                                         create_graph=True, retain_graph=True)
+            
+            # E_grad_l = torch.autograd.grad(energy.sum(), 
+            #                              batched_graph.atom_frac_coords, 
+            #                             #  grad_outputs=torch.ones(log_p_c.shape, device = log_p_c.device), 
+            #                              create_graph=True, retain_graph=True)
+            
+            forces = [-1 * force_dim for force_dim in f_grad] # in cart_coords
+            # print(forces)
+            batch_forces = torch.cat(forces, dim = 0).detach()
+        else:
+            batch_forces = None
+
+        c = self.predict_property(crystal_fea_all)    # c is the property from a regressor, i.e. c = (c|R)
+        # change the regression problem into a classfication probability
+        
+        p_c = classifier(c)              
+        log_p_c = torch.log(p_c)
+        c_grad = torch.autograd.grad(log_p_c, batched_graph.atom_positions, 
+                                        # grad_outputs=torch.ones(log_p_c.shape, device = log_p_c.device), 
+                                        create_graph=True, retain_graph= True)
+        batch_c_grad = torch.cat(c_grad, dim = 0).detach()
+
+        return batch_c_grad, batch_forces
+
+    
     def langevin_dynamics_guidance(self, z, prop_guidance, ld_kwargs, gt_num_atoms=None, gt_atom_types=None):
         """decode crystral structure from latent embeddings.
             ld_kwargs: args for doing annealed langevin dynamics sampling:
@@ -233,7 +279,8 @@ class CHGGen(BaseModule):
             all_noise_cart = []
             all_atom_types = []
 
-        # self.classifier.to(self.device)
+        # init classfier
+        classifier = Classifier(prop_given= prop_guidance)
 
         # obtain key stats.
         num_atoms, _, lengths, angles, composition_per_atom = self.decode_stats(
@@ -251,43 +298,77 @@ class CHGGen(BaseModule):
 
         # init coords.
         cur_frac_coords = torch.rand((num_atoms.sum(), 3), device=z.device, requires_grad = False)
+        cur_lattices  = torch.rand((num_atoms.sum(), 3, 3), device=z.device, requires_grad = False)
         
-        # init classfier
-        classifier = Classifier(prop_given= prop_guidance)
-
+        
+        
         # annealed langevin dynamics.
-        for sigma in tqdm(self.sigmas, total=self.sigmas.size(0), disable=ld_kwargs.disable_bar):
-            if sigma < ld_kwargs.min_sigma:
+        for ii_sigma in tqdm( range(len(self.sigmas_F)), total=self.sigmas_F.size(0), disable=ld_kwargs.disable_bar):
+            sigma_F = self.sigmas_F[ii_sigma]
+            sigma_L = self.sigmas_L[ii_sigma]
+            if sigma_F < ld_kwargs.min_sigma:
                 break
-            step_size = ld_kwargs.step_lr * (sigma / self.sigmas[-1]) ** 2
+            step_size_F = ld_kwargs.step_lr * (sigma_F / self.sigmas_F[-1]) ** 2
+            step_size_L = ld_kwargs.step_lr * (sigma_L / self.sigmas_L[-1]) ** 2
 
             for step in range(ld_kwargs.n_step_each):
-                noise_cart = torch.randn_like(
-                    cur_frac_coords) * torch.sqrt(step_size * 2)
-                pred_cart_coord_diff, pred_atom_types = self.decoder(
-                    z, cur_frac_coords, cur_atom_types, num_atoms, lengths, angles)
-                # add the probability gradient
-                # compute the property via  encoder 
+                # print("step_size_F: ", step_size_F)
+                # print("step_size_L: ", step_size_L)
+                # print("num_atoms: " , num_atoms)
+                print("max lattice: ", cur_lattices.max())
 
-                structure_list = self.get_pymatgen_structure(lengths, angles, num_atoms, cur_frac_coords, cur_atom_types)
-        
+                noise_frac = torch.randn_like(cur_frac_coords)* torch.sqrt(step_size_F * 2) 
+                noise_latt = torch.randn_like(cur_lattices)* torch.sqrt(step_size_L * 2) 
+                # pred_cart_coord_diff, pred_atom_types = self.decoder()
+
+                # init lattices with given lengths, angles and num_atoms
+                cur_lattices = self.get_lattices(lengths, angles, num_atoms)
+                structure_list = self.get_pymatgen_structure_from_lattice(cur_lattices, 
+                                                                          num_atoms, 
+                                                                          cur_frac_coords, cur_atom_types)
+                
                 for s_gen in structure_list:
                     print(s_gen.composition.reduced_formula)
-                    
+            
                 crystal_graph_list = self.get_crystal_graph(structure_list)
-
                 batched_graph = BatchedGraph.from_graphs(
-                                    crystal_graph_list,
-                                    bond_basis_expansion=self.encoder.bond_basis_expansion,
-                                    angle_basis_expansion=self.encoder.angle_basis_expansion,
-                                    compute_stress= False,
-                                )
+                                            crystal_graph_list,
+                                            bond_basis_expansion=self.encoder.bond_basis_expansion,
+                                            angle_basis_expansion=self.encoder.angle_basis_expansion,
+                                            compute_stress= False,
+                                        )
                 
-                batch_c_grad, batch_forces = self.compute_grad(batched_graph= batched_graph, classifier= classifier, ld_kwargs= ld_kwargs)
+                h, l, f, edges, atom_owners = self.batched_graph_stat(batched_graph= batched_graph, crys_graph_list= crystal_graph_list)
+                edge_attr = torch.ones(edges.shape[1], 1)  # TODO: remove the edge_attr in the future
+
+                # forward to decoder for denoising, output is the score of lattices and frac_coords
+                l_score_per_structure, f_score =   self.decoder(pred_frac_coords = f, 
+                                                    pred_lattices = l,  
+                                                    pred_atom_type_embs = h,
+                                                    edges = edges,
+                                                    edge_attr = edge_attr,
+                                                    atom_owners = atom_owners,)
+                
+                l_score = l_score_per_structure[atom_owners] # l_score is per atom in the batched graph
+
+                ## TODO: add the denoising part for updating lattices and frac_coords
+
+                pred_lattices_diff = l_score / sigma_L
+                pred_frac_coords_diff = f_score / sigma_F
+
+                cur_frac_coords = cur_frac_coords + step_size_F * pred_frac_coords_diff + noise_frac
+                cur_lattices = cur_lattices + step_size_L * pred_lattices_diff + noise_latt
+
+                # print("cur_lattices: ", cur_lattices)
+
+
+                #### need to update the lattice and frac ####
+                batch_c_grad, batch_forces = self.compute_grad(batched_graph= batched_graph, classifier= classifier, 
+                                                               ld_kwargs= ld_kwargs)
 
                 
-                cur_cart_coords = frac_to_cart_coords(
-                    cur_frac_coords, lengths, angles, num_atoms)
+                # cur_cart_coords = frac_to_cart_coords(
+                #     cur_frac_coords, lengths, angles, num_atoms)
 
                 ## TODO: double check the scale and sign !
 
@@ -304,27 +385,23 @@ class CHGGen(BaseModule):
                 # print("force induced displacement after clamping")
                 # print(force_disp)
 
-                if ld_kwargs.compute_force == True:
-                    pred_cart_coord_diff = pred_cart_coord_diff / sigma  +  prop_disp  + force_disp
-                else:
-                    pred_cart_coord_diff = pred_cart_coord_diff / sigma  +  prop_disp
-               
-                cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart
-                cur_frac_coords = cart_to_frac_coords(
-                    cur_cart_coords, lengths, angles, num_atoms)
 
-                if gt_atom_types is None:
-                    cur_atom_types = torch.argmax(pred_atom_types, dim=1) + 1
 
-                if ld_kwargs.save_traj:
-                    all_frac_coords.append(cur_frac_coords)
-                    all_pred_cart_coord_diff.append(
-                        step_size * pred_cart_coord_diff)
-                    all_noise_cart.append(noise_cart)
-                    all_atom_types.append(cur_atom_types)
+                ######### update lattice and frac_coords #########
+                # if gt_atom_types is None:
+                #     cur_atom_types = torch.argmax(pred_atom_types, dim=1) + 1
 
-        output_dict = {'num_atoms': num_atoms, 'lengths': lengths, 'angles': angles,
-                       'frac_coords': cur_frac_coords, 'atom_types': cur_atom_types,
+                # if ld_kwargs.save_traj:
+                #     all_frac_coords.append(cur_frac_coords)
+                #     all_pred_cart_coord_diff.append(
+                #         step_size * pred_cart_coord_diff)
+                #     all_noise_cart.append(noise_cart)
+                #     all_atom_types.append(cur_atom_types)
+
+        output_dict = {'num_atoms': num_atoms, 
+                       'frac_coords': cur_frac_coords, 
+                       'lattices': cur_lattices,
+                       'atom_types': cur_atom_types,
                        'is_traj': False}
 
         if ld_kwargs.save_traj:
@@ -338,17 +415,70 @@ class CHGGen(BaseModule):
 
         return output_dict
     
-    def get_pymatgen_structure(self, lengths, angles, num_atoms, frac_coords, atom_types):
+    def batched_graph_stat(self, batched_graph, crys_graph_list):
+        batched_atom_graph = batched_graph.batched_atom_graph
+        # print('batched atom graph:', batched_atom_graph.shape)
+
+        edges = batched_atom_graph.T
+        atom_owners = batched_graph.atom_owners                                             # owners of batched atoms for feature indexing
+
+        ################################################################################
+        # Batch Cartesian coordinates, fractional coordinates, lattice, atomic numbers.
+        ################################################################################
+        # batched Cartesian coordnates with shape (sum(# atoms per structure), dim_x)
+        x = batched_graph.atom_positions                                                    # Cartesian coordinates 
+        x = torch.cat(x, dim = 0)                                                           # Batched atom positions
+        # x = x[atom_owners]                                                                # !!!: Check is it necessary?
+        # print('x:', x)
+        
+        # batched fractional coordinates with shape (sum(# atoms per structure), xyz (3))
+        f = [g.atom_frac_coord for g in crys_graph_list]  
+        f = torch.cat(f, dim = 0)
+        # f = f[atom_owners]                                                                # !!!: Check is it necessary?
+        # print('f:', f)                                                                      # f is the fractional coords in the batched format
+        
+        # batched lattice with shape (len(edge_index), abc (3), xyz (3))
+        l = [g.lattice for g in crys_graph_list]                                            # lattice row corresponds to a lattice vector
+        l = torch.stack(l, dim = 0)
+        l = l[atom_owners]                                                                  # l is the batched lattice consitent with EGNN
+        # print('l:', l)
+        
+        # batched one hot atomic number with shape (sum(# atoms per structure), max(z))
+        Z = [g.atomic_number for g in crys_graph_list]
+        Z = torch.cat(Z, dim=0) - 1                                                         # Shift atomic number starting from 0
+        h_Z_one_hot = F.one_hot(Z, num_classes = MAX_ATOMIC_NUM)
+
+        return h_Z_one_hot.float(), l, f, edges, atom_owners.long()
+    
+    def get_lattices(self,lengths, angles, num_atoms):
         batch = torch.arange(len(num_atoms), device = num_atoms.device)
         batch = batch.repeat_interleave(num_atoms)
-        s_list = []
+        lattice_list = []
         for ii in range(len(num_atoms)):
             indices = torch.where(batch == ii)[0] 
             if len(indices) == 0: # remove the structure with zero atoms
                 continue
             Latt = Lattice.from_parameters(a = lengths[ii,0].cpu(), b = lengths[ii,1].cpu(), c = lengths[ii,2].cpu(),
                                         alpha= angles[ii, 0].cpu(), beta= angles[ii,1].cpu(), gamma=angles[ii, 2].cpu())
+            lattice_list.append(Latt.matrix)
 
+        if len(lattice_list) == 1:
+            return torch.tensor(lattice_list[0], device= num_atoms.device, dtype= torch.float32)[None, :]
+        else:
+            return torch.stack(lattice_list, dim=0, device = num_atoms.device, dtype= torch.float32)
+    
+    def get_pymatgen_structure(self, lengths, angles, num_atoms, frac_coords, atom_types):
+        batch = torch.arange(len(num_atoms), device = num_atoms.device)
+        batch = batch.repeat_interleave(num_atoms)
+        s_list = []
+        lattice_list = []
+        for ii in range(len(num_atoms)):
+            indices = torch.where(batch == ii)[0] 
+            if len(indices) == 0: # remove the structure with zero atoms
+                continue
+            Latt = Lattice.from_parameters(a = lengths[ii,0].cpu(), b = lengths[ii,1].cpu(), c = lengths[ii,2].cpu(),
+                                        alpha= angles[ii, 0].cpu(), beta= angles[ii,1].cpu(), gamma=angles[ii, 2].cpu())
+            
             frac_ = frac_coords[indices]
             type_ = atom_types[indices]
             species_ = [Element.from_Z(ele_Z) for ele_Z in type_]
@@ -357,7 +487,28 @@ class CHGGen(BaseModule):
                             to_unit_cell=False,coords_are_cartesian=False)
 
             s_list.append(s_gen)
-        return s_list 
+            lattice_list.append(Latt.matrix)
+        return s_list, lattice_list
+    
+    def get_pymatgen_structure_from_lattice(self, lattices, num_atoms, frac_coords, atom_types):
+        batch = torch.arange(len(num_atoms), device = num_atoms.device)
+        batch = batch.repeat_interleave(num_atoms)
+        s_list = []
+        for ii in range(len(num_atoms)):
+            indices = torch.where(batch == ii)[0] 
+            if len(indices) == 0: # remove the structure with zero atoms
+                continue
+            Latt = Lattice(lattices[ii].cpu().detach().numpy())
+            
+            frac_ = frac_coords[indices]
+            type_ = atom_types[indices]
+            species_ = [Element.from_Z(ele_Z) for ele_Z in type_]
+
+            s_gen = Structure(lattice= Latt , species= species_, coords= frac_.cpu().detach().numpy(),
+                            to_unit_cell=False,coords_are_cartesian=False)
+
+            s_list.append(s_gen)
+        return s_list
 
     def get_crystal_graph(self, pymatgen_structure_list):
         crystal_graph_list = []
@@ -367,12 +518,15 @@ class CHGGen(BaseModule):
 
         return crystal_graph_list
 
+
+
     def sample(self, num_samples, ld_kwargs):
         z = torch.randn(num_samples, self.hparams.hidden_dim,
                         device=self.device)
         samples = self.langevin_dynamics(z, ld_kwargs)
         return samples
     
+    # def transfer_batch_to_device(self, batch, device, dataloader_idx):
 
     
 
@@ -386,17 +540,24 @@ class CHGGen(BaseModule):
         
         graphs = [g.to(self.device) for g in batch.crys_graph]
         
-        # mu, log_var, z = self.encode(graphs)
-
+        mu, log_var, z = self.encode(graphs)
         (pred_num_atoms, pred_lengths_and_angles, pred_lengths, pred_angles,
          pred_composition_per_atom) = self.decode_stats(
             z, batch.num_atoms, batch.lengths, batch.angles, teacher_forcing)
 
         # sample noise levels.
-        noise_level = torch.randint(0, self.sigmas.size(0),
+        noise_level_F = torch.randint(0, self.sigmas_F.size(0),
                                     (batch.num_atoms.size(0),),
                                     device=self.device)
-        used_sigmas_per_atom = self.sigmas[noise_level].repeat_interleave(
+        
+        noise_level_L = torch.randint(0, self.sigmas_L.size(0),
+                                    (batch.num_atoms.size(0),),
+                                    device=self.device)
+        
+
+        used_sigmas_F_per_atom = self.sigmas_F[noise_level_F].repeat_interleave(
+            batch.num_atoms, dim=0)
+        used_sigmas_L_per_atom = self.sigmas_L[noise_level_L].repeat_interleave(
             batch.num_atoms, dim=0)
 
         type_noise_level = torch.randint(0, self.type_sigmas.size(0),
@@ -416,17 +577,27 @@ class CHGGen(BaseModule):
             atom_type_probs, num_samples=1).squeeze(1) + 1
 
         # add noise to the cart coords
-        cart_noises_per_atom = (
+        frac_noises_per_atom = (
             torch.randn_like(batch.frac_coords) *
-            used_sigmas_per_atom[:, None])
-        cart_coords = frac_to_cart_coords(
-            batch.frac_coords, pred_lengths, pred_angles, batch.num_atoms)
-        cart_coords = cart_coords + cart_noises_per_atom
+            used_sigmas_F_per_atom[:, None])
+        
+        latt_noises_per_atom = (
+            torch.randn_like(batch.frac_coords) *
+            used_sigmas_L_per_atom[:, None])
+        
+        lattices = batch.lattices
+        lattices_per_atom.repeat_interleave(batch.num_atoms, dim=0)
+
+        frac_coords = batch.frac_coords
+
+        noisy_frac_coords =  frac_coords + frac_noises_per_atom
+        noisy_lattices = lattices + latt_noises_per_atom
+        
+
         noisy_frac_coords = cart_to_frac_coords(
             cart_coords, pred_lengths, pred_angles, batch.num_atoms)
         # pred_atom_types is the (atomic numer - 1)
-        pred_cart_coord_diff, pred_atom_types = self.decoder(
-            z, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
+        pred_cart_coord_diff, pred_atom_types = self.decoder()
 
         # compute loss.
         num_atom_loss = self.num_atom_loss(pred_num_atoms, batch)
@@ -482,6 +653,7 @@ class CHGGen(BaseModule):
         """
         Samples composition such that it exactly satisfies composition_prob
         """
+
         batch = torch.arange(
             len(num_atoms), device=num_atoms.device).repeat_interleave(num_atoms)
         assert composition_prob.size(0) == num_atoms.sum() == batch.size(0)
