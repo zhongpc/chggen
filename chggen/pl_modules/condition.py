@@ -47,7 +47,7 @@ class Classifier(nn.Module):
     
     def __init__(
         self,
-        prop_given: torch.Tensor, # a scalar
+        prop_given: torch.Tensor,                        # A scalar
         bins: int = 200,                                 # Discritize 20 properties.
         interval: List[float, float] = [-0.1, 0.1],      # From -0.1 eV to 0.1 eV.
     ) -> None:                                           # TODO: Rescale E_hull for interval here?

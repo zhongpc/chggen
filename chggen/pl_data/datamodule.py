@@ -1,21 +1,17 @@
 import random
-from typing import Optional, Sequence
+from typing import Optional
 from pathlib import Path
 
-import hydra
 import numpy as np
-import omegaconf
 import pytorch_lightning as pl
 import torch
-from omegaconf import DictConfig
-from torch.utils.data import Dataset
-from torch_geometric.data import DataLoader
+from torch_geometric.data import DataLoader, Dataset
 
 # from chggen.common.utils import PROJECT_ROOT
 from chggen.common.data_utils import get_scaler_from_data_list
 
 
-def worker_init_fn(id: int):
+def worker_init_fn(id: int) -> None:
     """
     DataLoaders workers init function.
 
@@ -31,33 +27,30 @@ def worker_init_fn(id: int):
     # More than 128 bits (4 32-bit words) would be overkill.
     np.random.seed(ss.generate_state(4))
     random.seed(uint64_seed)
-
+    return None
 
 class CrystDataModule(pl.LightningDataModule):
+    """Crystal data module for packing traning, validation and testing data."""
     def __init__(
         self,
-        train_dataset = None,
-        val_dataset = None,
-        test_dataset = None,
+        train_dataset: Dataset = None,
+        val_dataset: Dataset = None,
+        test_dataset: Dataset = None,
         num_workers: int = 1,
         batch_size: int = 16,
-        scaler_path=None,
-    ):
+        scaler_path: Optional[str] = None,
+    ) -> None:
+        """Initialize the module with the given dataset."""
         super().__init__()
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
         self.test_dataset = test_dataset
         self.num_workers = num_workers
         self.batch_size = batch_size
-
-        # self.train_dataset: Optional[Dataset] = None
-        # self.val_datasets: Optional[Sequence[Dataset]] = None
-        # self.test_datasets: Optional[Sequence[Dataset]] = None
-
         self.get_scaler(scaler_path)
 
     def prepare_data(self) -> None:
-        # download only
+        """Download the dataset."""
         pass
 
     def get_scaler(self, use_prop_scaler = False, scaler_path = None):
@@ -71,27 +64,9 @@ class CrystDataModule(pl.LightningDataModule):
         else:
             self.lattice_scaler = torch.load(
                 Path(scaler_path) / 'lattice_scaler.pt')
-        # return lattice_scaler
-
-    # def get_scaler(self, scaler_path):
-    #     # Load once to compute property scaler
-    #     if scaler_path is None:
-    #         train_dataset = hydra.utils.instantiate(self.datasets.train)
-    #         self.lattice_scaler = get_scaler_from_data_list(
-    #             train_dataset.cached_data,
-    #             key='scaled_lattice')
-    #         self.scaler = get_scaler_from_data_list(
-    #             train_dataset.cached_data,
-    #             key=train_dataset.prop)
-    #     else:
-    #         self.lattice_scaler = torch.load(
-    #             Path(scaler_path) / 'lattice_scaler.pt')
-    #         self.scaler = torch.load(Path(scaler_path) / 'prop_scaler.pt')
 
     def setup(self, stage: Optional[str] = None):
-        """
-        construct datasets and assign data scalers.
-        """
+        """construct datasets and assign data scalers."""
         if stage is None or stage == "fit":
             self.train_dataset.lattice_scaler = self.lattice_scaler
             self.val_dataset.lattice_scaler = self.lattice_scaler
@@ -100,6 +75,7 @@ class CrystDataModule(pl.LightningDataModule):
             self.test_dataset.lattice_scaler = self.lattice_scaler
 
     def train_dataloader(self) -> DataLoader:
+        """Returns a DataLoader for training."""
         return DataLoader(
             self.train_dataset,
             shuffle=True,
@@ -109,6 +85,7 @@ class CrystDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self) -> DataLoader:
+        """Returns a DataLoader for validation."""
         return DataLoader(
                 self.val_dataset,
                 shuffle=False,
@@ -118,6 +95,7 @@ class CrystDataModule(pl.LightningDataModule):
             )
 
     def test_dataloader(self) -> DataLoader:
+        """Returns a DataLoader for testing."""
         return DataLoader(
                 self.test_dataset,
                 shuffle=False,
@@ -129,21 +107,7 @@ class CrystDataModule(pl.LightningDataModule):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
-            f"{self.datasets=}, "
+            f"{self.train_dataset=}, "
             f"{self.num_workers=}, "
             f"{self.batch_size=})"
         )
-
-
-# @hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
-# def main(cfg: omegaconf.DictConfig):
-#     datamodule: pl.LightningDataModule = hydra.utils.instantiate(
-#         cfg.data.datamodule, _recursive_=False
-#     )
-#     datamodule.setup('fit')
-#     import pdb
-#     pdb.set_trace()
-
-
-# if __name__ == "__main__":
-#     main()

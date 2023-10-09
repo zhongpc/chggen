@@ -1,24 +1,26 @@
-import numpy as np
-import pandas as pd
-import networkx as nx
-import torch
-import copy
-import itertools
-from pathlib import Path
+"""Module for data preparation."""
 
+from __future__ import annotations
+
+import copy
+from pathlib import Path
+from p_tqdm import p_umap
+
+import pandas as pd
+import numpy as np
+import torch
 
 from pymatgen.core.structure import Structure
 from pymatgen.core.lattice import Lattice
 from pymatgen.analysis.graphs import StructureGraph
 from pymatgen.analysis import local_env
 
-from networkx.algorithms.components import is_connected
+from sklearn.metrics import (
+    accuracy_score, 
+    recall_score, 
+    precision_score,
+)
 
-from sklearn.metrics import accuracy_score, recall_score, precision_score
-
-from torch_scatter import scatter
-
-from p_tqdm import p_umap
 
 
 # Tensor of unit cells. Assumes 27 cells in -1, 0, 1 offsets in the x and y dimensions
@@ -607,33 +609,38 @@ def min_distance_sqr_pbc(cart_coords1, cart_coords2, lengths, angles,
 class StandardScalerTorch(object):
     """Normalizes the targets of a dataset."""
 
-    def __init__(self, means=None, stds=None):
+    def __init__(
+        self, means = None, stds = None
+    ) -> None:
         self.means = means
         self.stds = stds
 
-    def fit(self, X):
+    def fit(self, X) -> None:
         X = torch.tensor(X, dtype=torch.float)
         self.means = torch.mean(X, dim=0)
         # https://github.com/pytorch/pytorch/issues/29372
         self.stds = torch.std(X, dim=0, unbiased=False) + EPSILON
+        return None
 
-    def transform(self, X):
+    def transform(self, X) -> torch.Tensor:
         X = torch.tensor(X, dtype=torch.float)
         return (X - self.means) / self.stds
 
-    def inverse_transform(self, X):
+    def inverse_transform(self, X) -> torch.Tensor:
         X = torch.tensor(X, dtype=torch.float)
         return X * self.stds + self.means
 
-    def match_device(self, tensor):
+    def match_device(self, tensor) -> None:
         if self.means.device != tensor.device:
             self.means = self.means.to(tensor.device)
             self.stds = self.stds.to(tensor.device)
-
-    def copy(self):
+        return None
+    
+    def copy(self) -> StandardScalerTorch:
         return StandardScalerTorch(
-            means=self.means.clone().detach(),
-            stds=self.stds.clone().detach())
+            means = self.means.clone().detach(),
+            stds = self.stds.clone().detach()
+        )
 
     def __repr__(self) -> str:
         return (
@@ -648,6 +655,7 @@ def get_scaler_from_data_list(data_list, key):
     scaler = StandardScalerTorch()
     scaler.fit(targets)
     return scaler
+
 
 def get_scaler(dataset = None, use_prop_scaler = False, 
                scaler_path = None):
@@ -733,7 +741,6 @@ def preprocess_tensors(crystal_array_list, niggli, primitive, graph_method):
 
 def add_scaled_lattice_prop(data_list, lattice_scale_method):
     for dict in data_list:
-        crys_graph = dict['crys_graph']
         # the indexes are brittle if more objects are returned
         lengths = dict['lengths']
         angles = dict['angles'] 

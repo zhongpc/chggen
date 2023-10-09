@@ -14,15 +14,6 @@ import numpy as np
 
 NUM_SPECIES = 94                                                # Number of species in the dataset.
 
-def build_mlp(in_dim, hidden_dim, fc_num_layers, out_dim):
-    mods = [nn.Linear(in_dim, hidden_dim), nn.ReLU()]
-    for i in range(fc_num_layers-1):
-        mods += [nn.Linear(hidden_dim, hidden_dim), nn.ReLU()]
-    mods += [nn.Linear(hidden_dim, out_dim)]
-    return nn.Sequential(*mods)
-
-
-
 def unsorted_segment_sum(
     data: torch.Tensor, segment_ids: torch.Tensor, num_segments: int
 ) -> torch.Tensor:
@@ -71,6 +62,7 @@ def get_reduced_id_from_tensor(
     tensor = [torch.where(tensor == i)[0][0].item() for i in range(tensor.max().item()+1)]
     tensor = torch.tensor(tensor)
     return tensor
+
 
 
 class E_GCL(nn.Module):
@@ -240,22 +232,22 @@ class E_GCL(nn.Module):
     
     def coord2strucfactor(
         self,
-        edge_index: torch.Tensor,
-        coord: torch.Tensor,
+        x: torch.Tensor,
         ft_basis: int,
+        edge_index: torch.Tensor,
     ) -> torch.Tensor:
         """Compute FT bases expansion of relative fractional distance.
         (f1, f2, f3) -> (cos(2pi*f1), sin(2pi*f1), cos(2pi*f2), sin(2pi*f2), 
         cos(2pi*f3), sin(2pi*f3)), ...
         
         Args:
-            edge_index (Tensor): edge indices.
-            coord (Tensor): coordinates.
+            x (Tensor): coordinates.
             ft_basis (int): number of FT basis to compute.
+            edge_index (Tensor): edge indices.
         """
         row, col = edge_index
-        coord_diff = coord[row] - coord[col]
-        ft_feat = torch.arange(2, ft_basis+2, 2) * torch.pi * coord_diff.unsqueeze(-1)
+        coord_diff = x[row] - x[col]
+        ft_feat = torch.arange(2, ft_basis+2, 2, device=coord_diff.device) * torch.pi * coord_diff.unsqueeze(-1)
         ft_feat = torch.cat([torch.sin(ft_feat), torch.cos(ft_feat)], dim = -1) # [batch, x_dim, f_basis]
         ft_feat = ft_feat.reshape(-1, ft_basis * ft_feat.shape[1])
         return ft_feat 
@@ -263,9 +255,9 @@ class E_GCL(nn.Module):
     def forward(
         self,
         h: torch.Tensor,
-        edge_index: torch.Tensor,
         l: torch.Tensor,
-        coord: torch.Tensor,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
         edge_attr: [torch.Tensor, None] = None,
         node_attr: [torch.Tensor, None] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -273,10 +265,10 @@ class E_GCL(nn.Module):
         
         Args:
             h (Tensor): hidden node features.
-            edge_index (Tensor): edge indices.
             l (Tensor): lattice vectors with shape like (batched number of nodes, 
                 lattice index (3), components (3)).
-            coord (Tensor): coordinates.
+            x (Tensor): coordinates.
+            edge_index (Tensor): edge indices.
             edge_attr (Tensor, optional): edge attribute.
             node_attr (Tensor, optional): node attribute.
         
@@ -285,11 +277,13 @@ class E_GCL(nn.Module):
         """
         row, col = edge_index
         l_feat = self.lattice2feat(l)                                                   # lattice feature
-        ft_feat = self.coord2strucfactor(edge_index, coord, ft_basis= self.ft_basis)    # structure factor feature
+        ft_feat = self.coord2strucfactor(x, ft_basis=self.ft_basis, edge_index=edge_index)    # structure factor feature
         edge_feat = self.edge_model(h[row], h[col], l_feat[row], ft_feat, edge_attr)    
         h, agg = self.node_model(h, edge_index, edge_feat, node_attr)
         
         return h
+       
+       
             
 class EGNN(nn.Module):
     """Equivariant GNN implementation.
@@ -318,7 +312,6 @@ class EGNN(nn.Module):
         self,
         in_node_nf: int,
         hidden_nf: int,
-        out_node_nf: int,
         in_edge_nf: int = 0,
         ft_basis: int = 10,
         x_dim: int = 3,
@@ -362,9 +355,9 @@ class EGNN(nn.Module):
         h: torch.Tensor,
         l: torch.Tensor,
         x: torch.Tensor,
-        edges: torch.Tensor,
-        edge_attr: torch.Tensor,
         atom_owners: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attr: [torch.Tensor, None] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass for EGNN model.
         
@@ -373,14 +366,14 @@ class EGNN(nn.Module):
             l (Tensor): lattice vectors with shape like (batched number of nodes, 
                 lattice index (3), components (3)).
             x (Tensor): coordinates.
-            edges (Tensor): edge indices.
-            edge_attr (Tensor): edge features.
             atom_owner (Tensor): owners of atoms showing which crystal structures 
                 the atoms belongs to.
+            edge_index (Tensor): edge indices.
+            edge_attr (Tensor, optional): edge features.
         """
         h = self.embedding_in(h)
         for i in range(0, self.n_layers):
-            h = self._modules["gcl_%d" % i](h, edges, l, x, edge_attr=edge_attr)
+            h = self._modules["gcl_%d" % i](h, l, x, edge_index, edge_attr=edge_attr)
         
         agg = unsorted_segment_mean(h, atom_owners, num_segments=atom_owners.max().item()+1)
         l_weight = self.embedding_out_l_weight(agg).reshape(-1, self.x_dim, self.x_dim)
@@ -389,184 +382,54 @@ class EGNN(nn.Module):
         x = self.embedding_out_x(h)
         return l, x
     
+    
 
 class EGNNDecoder(nn.Module):
-    """Decoder with nequip """
+    """EGNN Decoder for predicting noise for lattice and fractional coordinates."""
 
-    def __init__(
-        self,
-        hidden_dim = 128,
-        latent_dim = 64,
-        max_neighbors=20,
-        cutoff = 6.,
-    ):
+    def __init__(self) -> None:
+        """Initialize EGNNDecoder with model parameters."""
         super(EGNNDecoder, self).__init__()
-        # self.encoder = encoder
-        self.cutoff = cutoff
-        self.max_num_neighbors = max_neighbors
-
         self.egnn = EGNN(
-                    in_node_nf=NUM_SPECIES,
-                    hidden_nf=32,
-                    out_node_nf=1,
-                    in_edge_nf=1,
-                    ft_basis=10,
-                    x_dim= 3,
-                )
+            in_node_nf=NUM_SPECIES,
+            hidden_nf=32,
+            in_edge_nf=0,
+            ft_basis=10,
+            x_dim= 3,
+        )
 
-        # self.fc_atom = nn.Linear(hidden_dim, MAX_ATOMIC_NUM)
-
-    def forward(self, pred_frac_coords, pred_lattices,  pred_atom_type_embs,
-                edges, edge_attr, atom_owners):
-        """
-        args:
-            z: (N_cryst, num_latent)
-            pred_frac_coords: (N_atoms, 3)
-            pred_atom_types: (N_atoms, ), need to use atomic number e.g. H = 1
-            num_atoms: (N_cryst,)
-            lengths: (N_cryst, 3)
-            angles: (N_cryst, 3)
-        returns:
-            atom_frac_coords: (N_atoms, 3)
-            atom_types: (N_atoms, MAX_ATOMIC_NUM)
-        """
-
-        out = self.egnn(h = pred_atom_type_embs, l = pred_lattices, x = pred_frac_coords, 
-                   edges = edges, edge_attr = edge_attr, atom_owners = atom_owners)
+    def forward(
+        self, 
+        atomic_numbers,
+        noisy_lattices,
+        noisy_frac_coords, 
+        atom_owners,
+        edge_index,
+    ) -> torch.Tensor:
+        """ Decode with diffusion model using EGNN framework.
         
-
-        return out
-
+        Args:
+            atomic_numbers (Tensor): atomic number with shape like (N_atoms). 
+                NOTE: atomic numbers starts from 1. If one hot coding is used, substraction of 1 is needed ahead.
+            noisy_lattices (Tensor): noisy lattices before denoising with shape like (N_atoms, 3, 3).
+            noisy_frac_coords (Tensor): noisy fractional coordinates with shape like (N_atoms, 3).
+            atom_owners (Tensor): owners of atoms showing which crystal structures the atoms belong to, 
+                with shape like (N_atoms).
+            edge_index (Tensor): edge indices with shape like (2, N_edges). 
         
-        # edge_index, to_jimages, num_bonds = radius_graph_pbc(
-        #                 pred_frac_coords, lengths, angles, num_atoms, self.cutoff, self.max_num_neighbors,
-        #                 device=num_atoms.device)
-        # out = get_pbc_distances(
-        #                         pred_frac_coords,
-        #                         edge_index,
-        #                         lengths,
-        #                         angles,
-        #                         to_jimages,
-        #                         num_atoms,
-        #                         num_bonds,
-        #                         coord_is_cart=True,
-        #                         return_offsets=True,
-        #                         return_distance_vec=True,
-        #                     )
-
-        # pred_cart_coord_diff, pred_atom_types = self.nequip(data)
-        # return pred_cart_coord_diff, pred_atom_types
-    
-
-
-if __name__ == "__main__":
-    
-    ################################################################################
-    # Initialize structures.
-    ################################################################################
-    crys_converter = CrystalGraphConverter(atom_graph_cutoff=5,
-                                            bond_graph_cutoff=3)
-    chgnet= CHGNet_encoder.load()
-    
-    # Construct a rock salt MgO structure.
-    mgo_structure = Structure(
-        lattice=[
-            [0, 2.13, 2.13], 
-            [2.13, 0, 2.13], 
-            [2.13, 2.13, 0]
-        ],
-        species=["Mg", "O"],
-        coords=[
-            [0, 0, 0], 
-            [0.5, 0.5, 0.5],        
-        ],
-        coords_are_cartesian=False,     # Default to False.
-    )
-
-    
-    ################################################################################
-    # Basis setting.
-    ################################################################################
-    x_dim = 3
-    
-    ################################################################################
-    # Crystal graph construction.
-    ################################################################################
-    # Crystal graph construction for single structure.
-    crys_graph = crys_converter(mgo_structure)
-    atom_graph = crys_graph.atom_graph
-    print('atom graph size:', atom_graph.shape)
-    
-    # Batch graphs for parallel computing.
-    crys_graph_list = [crys_graph, crys_graph]
-    
-    batched_graph = BatchedGraph.from_graphs(
-                                    crys_graph_list,
-                                    bond_basis_expansion=chgnet.bond_basis_expansion,   # bond basis expansion function
-                                    angle_basis_expansion=chgnet.angle_basis_expansion, # angle basis expansion function
-                                    compute_stress= False,
-                                )
-    batched_atom_graph = batched_graph.batched_atom_graph
-    print('batched atom graph:', batched_atom_graph.shape)
-
-    edges = batched_atom_graph.T
-    print('edges index size:', edges.shape)
-
-    edge_attr = torch.ones(edges.shape[1], 1)                                           # TODO: remove or change to resonable attr if necessary
-
-    atom_owners = batched_graph.atom_owners                                             # owners of batched atoms for feature indexing
-    print('atom owners:', atom_owners)
-
-    ################################################################################
-    # Batch Cartesian coordinates, fractional coordinates, lattice, atomic numbers.
-    ################################################################################
-    # batched Cartesian coordnates with shape (sum(# atoms per structure), dim_x)
-    x = batched_graph.atom_positions                                                    # Cartesian coordinates 
-    x = torch.cat(x, dim = 0)                                                           # Batched atom positions
-    # x = x[atom_owners]                                                                # !!!: Check is it necessary?
-    print('x:', x)
-    
-    # batched fractional coordinates with shape (sum(# atoms per structure), xyz (3))
-    f = [g.atom_frac_coord for g in crys_graph_list]  
-    f = torch.cat(f, dim = 0)
-    # f = f[atom_owners]                                                                # !!!: Check is it necessary?
-    print('f:', f)                                                                      # f is the fractional coords in the batched format
-    
-    # batched lattice with shape (len(edge_index), abc (3), xyz (3))
-    l = [g.lattice for g in crys_graph_list]                                            # lattice row corresponds to a lattice vector
-    l = torch.stack(l, dim = 0)
-    l = l[atom_owners]                                                                  # l is the batched lattice consitent with EGNN
-    print('l:', l)
-    
-    # batched one hot atomic number with shape (sum(# atoms per structure), max(z))
-    z = [g.atomic_number for g in crys_graph_list]
-    z = torch.cat(z, dim=0) - 1                                                         # Shift atomic number starting from 0
-    z_one_hot = F.one_hot(z, num_classes=NUM_SPECIES)
-    print('one hot encoded z size:', z_one_hot.shape)
-
-    ################################################################################
-    # EGNN.
-    ################################################################################
-    # Initialize EGNN
-    decoder = EGNNDecoder()
-    h = z_one_hot.float()
-    atom_owners = atom_owners.long()
-    
-    # Run EGNN
-    # l, x = egnn(h, l, f, edges, edge_attr, atom_owners)
-    # print(l, x)
-    
-    from e3nn import o3
-    R = o3.rand_matrix(1)[0]
-    
-    out = egnn(h, l, f, edges, edge_attr, atom_owners)
-    print('-'*30, 'BEFORE ROTATION', '-'*30)
-    print('lattice:\n', torch.einsum('iax,xb->iab', out[0], R))
-    print('fractional coordinates:\n', out[1])
-    
-    
-    l = torch.einsum('iax,xb->iab', l,R)
-    out = egnn(h, l, f, edges, edge_attr, atom_owners)
-    print('-'*30, 'AFTER ROTATION', '-'*30)
-    print('lattice:\n',  out[0])
-    print('fractional coordinates:\n', out[1])
+        Returns:
+            lattice_score (Tensor): score of lattice with shape like (N_structure, 3, 3).
+            frac_coords_score (Tensor): score of fractional coordiates with shape like (N_atoms, 3)
+        
+        # TODO: Check updating strategy in the chggen model. Whether output noise or denoised results.
+        """
+        # atomic number embedding.
+        h = F.one_hot(atomic_numbers-1, num_classes = MAX_ATOMIC_NUM).float()
+        lattice_score, frac_coords_score = self.egnn(
+            h = h, 
+            l = noisy_lattices, 
+            x = noisy_frac_coords, 
+            atom_owners = atom_owners,
+            edge_index = edge_index, 
+        )
+        return lattice_score, frac_coords_score

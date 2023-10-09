@@ -1,53 +1,66 @@
-import hydra
-import omegaconf
-import torch
+"""Modules for dataset and dataloader."""
+
+from typing import List
+from p_tqdm import p_umap
+
 import pandas as pd
 import numpy as np
-from omegaconf import ValueNode
+import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 
-from p_tqdm import p_umap
-
-# from chggen.common.utils import PROJECT_ROOT
-from chggen.common.data_utils import (
-    preprocess, preprocess_tensors, add_scaled_lattice_prop)
-
-
 from pymatgen.core import Structure
+
+from chggen.common.data_utils import add_scaled_lattice_prop
 from chgnet.graph.converter import CrystalGraphConverter
 
 
-crys_converter = CrystalGraphConverter(atom_graph_cutoff=5,
-                                            bond_graph_cutoff=3)
 
+crys_converter = CrystalGraphConverter(
+    atom_graph_cutoff = 5, bond_graph_cutoff = 3
+)
 
-def process_csv(input_file, num_workers, niggli, primitive, prop_list):
+def process_one(
+    row: pd.DataFrame,
+    niggli: bool,                               # TODO: Consider Niggli reduction.
+    primitive: bool,                            # TODO: Consider primitive cell or conventional cell.
+    prop_list: list,
+) -> dict:
+    """Process one row of the csv file."""
+    crystal_str = row['cif']                    # cif file
+    structure = Structure.from_str(crystal_str, fmt = 'cif')
+
+    try:
+        crys_graph = crys_converter(structure)
+    except:
+        print("Crystal graph construction failed in CHGNet. Check the process_csv.")
+        return None
+
+    properties = {k: row[k] for k in prop_list if k in row.keys()}
+    result_dict = {
+        'mp_id': row['material_id'],
+        'cif': crystal_str,
+        'lattice': structure.lattice.matrix,
+        'frac_coords': structure.frac_coords,
+        'atom_types': structure.atomic_numbers,
+        'lengths': np.array(structure.lattice.lengths),
+        'angles': np.array(structure.lattice.angles),
+        'num_atoms': structure.num_sites,
+        'crys_graph': crys_graph,
+    }
+    result_dict.update(properties)
+    return result_dict
+
+def process_csv(
+    input_file: str, 
+    num_workers: int, 
+    niggli: bool,                               
+    primitive: bool,                           
+    prop_list: list,
+) -> List[dict]:
+    """Process csv file to get the list of dict containing infomation for one
+    structure."""
     df = pd.read_csv(input_file)
-    def process_one(row, niggli, primitive, prop_list):
-        crystal_str = row['cif']
-        structure = Structure.from_str(crystal_str, fmt = 'cif')
-
-        try:
-            crys_graph = crys_converter(structure)
-        except:
-            print("Crystal graph construction failed in CHGNet. Check the process_csv.")
-            return 
-
-        properties = {k: row[k] for k in prop_list if k in row.keys()}
-        result_dict = {
-            'mp_id': row['material_id'],
-            'cif': crystal_str,
-            'lattice': structure.lattice.matrix,
-            'frac_coords': structure.frac_coords,
-            'atom_types': structure.atomic_numbers,
-            'lengths': np.array(structure.lattice.lengths),
-            'angles': np.array(structure.lattice.angles),
-            'num_atoms': structure.num_sites,
-            'crys_graph': crys_graph,
-        }
-        result_dict.update(properties)
-        return result_dict
 
     unordered_results = p_umap(
         process_one,
@@ -58,19 +71,37 @@ def process_csv(input_file, num_workers, niggli, primitive, prop_list):
         num_cpus=num_workers)
     
     unordered_results = [item for item in unordered_results if item is not None]
-    
-    # mpid_to_results = {result['mp_id']: result for result in unordered_results}
-    # ordered_results = [mpid_to_results[df.iloc[idx]['material_id']]
-    #                    for idx in range(len(unordered_results))]
 
     return unordered_results
 
+
 class CHGNetDataset(Dataset):
-    def __init__(self, name: str, path: str,
-                 prop_list: list, niggli: bool = True, primitive: bool = False,
-                 preprocess_workers: int = 16,
-                 lattice_scale_method: str = 'scale_length',
-                 **kwargs):
+    def __init__(
+        self, 
+        name: str, 
+        path: str,
+        prop_list: list, 
+        niggli: bool = True, 
+        primitive: bool = False,
+        preprocess_workers: int = 16,
+        lattice_scale_method: str = 'scale_length',
+        **kwargs
+    ) -> None:
+        """Initialize CHGNetDataset.
+        
+        Args:
+            name (str): name of the dataset.
+            path (str): path to the csv file.
+            prop_list (list): list of properties to be included in the dataset.
+            niggli (bool, optional): Whether to perform Niggli reduction. 
+                Defaults to True.
+            primitive (bool, optional): Whether to use primitive cell.
+                Defaults to False.
+            preprocess_workers (int, optional): Number of workers for preprocessing.
+                Defaults to 16.
+            lattice_scale_method (str, optional): Method for scaling the lattice.
+                Defaults to 'scale_length'.
+        """
         super().__init__()
         self.path = path
         self.name = name
@@ -78,16 +109,15 @@ class CHGNetDataset(Dataset):
         self.prop_list = prop_list
         self.niggli = niggli
         self.primitive = primitive
-        # self.graph_method = graph_method
         self.lattice_scale_method = lattice_scale_method
-
         self.cached_data = process_csv(
             self.path,
             preprocess_workers,
             niggli=self.niggli,
             primitive=self.primitive,
             prop_list= prop_list)
-
+        
+        # Niggli reduction.
         add_scaled_lattice_prop(self.cached_data, lattice_scale_method)
         self.lattice_scaler = None
         self.scaler = None
@@ -98,7 +128,6 @@ class CHGNetDataset(Dataset):
     def __getitem__(self, index):
         data_dict = self.cached_data[index]
 
-        # scaler is set in DataModule set stage
         prop_list = []
         for key in self.prop_list:
             prop = data_dict[key]
@@ -115,15 +144,18 @@ class CHGNetDataset(Dataset):
         # atom_coords are fractional coordinates
         # edge_index is incremented during batching
         # https://pytorch-geometric.readthedocs.io/en/latest/notes/batching.html
-        data = Data(crys_graph = crys_graph,
-                    frac_coords=torch.Tensor(frac_coords),
-                    atom_types=torch.LongTensor(atom_types),
-                    lengths=torch.Tensor(lengths).view(1, -1),
-                    angles=torch.Tensor(angles).view(1, -1),
-                    lattices=torch.Tensor(lattice).view(1, -1),
-                    num_atoms = num_atoms,
-                    properties = torch.Tensor(prop_list).view(1, -1),
-                    )
+        data = Data(
+            x=torch.LongTensor(atom_types),
+            crys_graph=crys_graph,
+            edge_index=torch.LongTensor(crys_graph.atom_graph).T,
+            frac_coords=torch.Tensor(frac_coords),
+            atom_types=torch.LongTensor(atom_types),
+            lengths=torch.Tensor(lengths).view(1, -1),
+            angles=torch.Tensor(angles).view(1, -1),
+            lattices=torch.Tensor(lattice).view(1, -1),
+            num_atoms = num_atoms,
+            properties = torch.Tensor(prop_list).view(1, -1),
+        )
         return data
 
     def __repr__(self) -> str:

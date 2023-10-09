@@ -1,135 +1,78 @@
-from pathlib import Path
+"""Main file for training DiffCSP."""
 import pickle
-import torch
 import os
-from chggen.common.data_utils import get_scaler_from_data_list
-from chggen.pl_data.dataset import CHGNetDataset
-from chggen.pl_data.datamodule import CrystDataModule
-from chggen.pl_modules.model_egnn import CHGGen
-from torch.utils.data import DataLoader, Dataset
-from torch.utils.data.sampler import SubsetRandomSampler
-from torch_geometric.data import Batch
+
+import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 
+from chggen.common.data_utils import get_scaler
+from chggen.pl_data.dataset import CHGNetDataset
+from chggen.pl_data.datamodule import CrystDataModule
+from chggen.pl_modules.model_egnn import CHGGen
 
 
-import warnings
-warnings.simplefilter(action='ignore', category=Warning)
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
+# import warnings
+# warnings.simplefilter(action='ignore', category=Warning)
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
-def mkdir(path: str):
-    """Make directory.
+# Functions.
+def mkdir(path: str) -> None:
+    """Make directory if folder not exist.
 
     Args:
         path (str): directory name
-
-    Returns:
-        path
     """
-    folder = os.path.exists(path)
-    if not folder:
-        os.makedirs(path)
-    else:
+    if os.path.exists(path):
         print("Folder exists")
-    return path
-
-train_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv', # train.csv
-name = 'train_perov',
-prop_list = ['heat_all'],
-)
-
-val_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv', # val.csv
-name = 'val_perov',
-prop_list = ['heat_all'],
-)
-
-### test the lattice scaler ##
-
-def get_scaler(dataset, use_prop_scaler = False, 
-               scaler_path = None):
-    # Load once to compute property scaler
-    if scaler_path is None:
-        lattice_scaler = get_scaler_from_data_list(
-            dataset.cached_data,
-            key='scaled_lattice')
-        if use_prop_scaler:
-            NotImplementedError("Not implemented the multi prop scaler yet.")
     else:
-        lattice_scaler = torch.load(
-            Path(scaler_path) / 'lattice_scaler.pt')
-    return lattice_scaler
+        os.makedirs(path)
+    return None
 
+# Dataset.
+train_dataset = CHGNetDataset(
+    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/test_zpc.csv', # train.csv
+    name = 'train_perov',
+    prop_list = ['heat_all'],
+)
 
-def collate_graphs(batch_data: list):
-    """Collate of list of (graph, targets) into batch data.
-    """
-    all_data = []
-    all_graphs = []
-    all_targets = []
-    for item in batch_data:
-        graph = item[0]
-        data =  item[1]
-        targets = data['properties']
-        all_graphs.append(graph)
-        all_data.append(data)
-        all_targets.append(targets)
-    return all_graphs, all_data, all_targets
+val_dataset = CHGNetDataset(
+    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/test_zpc.csv', # val.csv
+    name = 'val_perov',
+    prop_list = ['heat_all'],
+)
 
-
-def get_loader(dataset, batch_size=64, num_workers=0, pin_memory=True):
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        collate_fn=collate_graphs,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-    )
-
-def get_loader_batch(dataset, batch_size=64, num_workers=0, pin_memory=True):
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-    )
-
-
+# Compute lattice scaler and save.
 lattice_scaler = get_scaler(dataset= train_dataset)
-
 with open('./test_models/lattice_scaler_perov', 'wb') as fp:
     pickle.dump(lattice_scaler, fp)
 
+datamodule = CrystDataModule(
+    train_dataset = train_dataset,
+    val_dataset = val_dataset,
+    num_workers = 8,
+    batch_size = 16,
+)
 
-datamodule = CrystDataModule(train_dataset= train_dataset,
-                             val_dataset= val_dataset,
-                             num_workers=8,
-                             batch_size= 16,
-                                )
-
-
-
-model_hparams ={'latent_dim': 64, 'hidden_dim': 128, 
+model_hparams = {'latent_dim': 64, 'hidden_dim': 128, 
                 'predict_property': True, 'property_dim': 1, # predict the multiple property 
                 'load_pretrain': True, 'fc_num_layers': 1, 
                 'sigma_F_begin': 10.0, 'sigma_F_end': 0.01, 
                 'sigma_L_begin': 1.0, 'sigma_L_end': 0.01, 
                 'type_sigma_begin': 5.0, 'type_sigma_end': 0.01,
                 'max_atoms': 20, # should be larger than the training set.
-                'num_noise_level': 1, 
+                'num_noise_level': 5, 
                 'lattice_scale_method': 'scale_length', 
-                'cost_natom': 1.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 1.0,
+                'cost_natom': 1.0, 'cost_latt': 10.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 1.0,
                 'beta': 0.01,
                 'teacher_forcing_lattice': True,
                 'teacher_forcing_max_epoch': 1000,
                 'decoder': 'egnn'}
 
-chggen = CHGGen(lattice_scaler= lattice_scaler, 
-                hparams_dict= model_hparams)
-
+chggen = CHGGen(
+    lattice_scaler = lattice_scaler, hparams_dict = model_hparams
+)
 
 # Define the checkpoint callback
 checkpoint_callback = ModelCheckpoint(
@@ -141,15 +84,15 @@ checkpoint_callback = ModelCheckpoint(
     verbose=True              # Print save messages for debugging
 )
 
+trainer = pl.Trainer(
+    accelerator = "gpu", 
+    devices = [0],
+    max_epochs = 10,
+    callbacks = [checkpoint_callback, TQDMProgressBar(refresh_rate = 1)],
+    #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training                    
+)
 
-trainer = pl.Trainer(accelerator = "gpu", 
-                     devices = [0],
-                     max_epochs= 10,
-                     callbacks=[checkpoint_callback, TQDMProgressBar(refresh_rate = 1)],
-                    #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training
-                     )
-
-trainer.fit(model= chggen, datamodule= datamodule)
+trainer.fit(model = chggen, datamodule = datamodule)
 
 mkdir("./test_models/perov/")
 trainer.save_checkpoint("./test_models/perov/trainer_perov.ckpt")

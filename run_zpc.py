@@ -84,15 +84,3 @@ with open('./output_from_ld', 'wb') as fp:
     pickle.dump(output, fp)
 
 print("Done")
-
-
-
-## 
-# data_params = {
-#     "batch_size": 16,
-#     "pin_memory": True,
-#     "shuffle": True,
-#     "collate_fn": collate_batch_v1,
-# }
-
-# data_loader = DataLoader(dataset, **data_params

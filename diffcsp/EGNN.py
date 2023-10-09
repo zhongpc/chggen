@@ -331,8 +331,8 @@ class EGNN(nn.Module):
         
         agg = unsorted_segment_mean(h, atom_owners, num_segments=atom_owners.max().item()+1)
         l_weight = self.embedding_out_l_weight(agg).reshape(-1, self.x_dim, self.x_dim)
-        l = l[get_reduced_id_from_tensor(atom_owners)]          # Reduce l to each structure one lattice.
-        l = torch.einsum('iax,ixb->iab', l_weight, l)                        # [# structure, abc (3), xyz (3)]
+        l = l[get_reduced_id_from_tensor(atom_owners)]                          # Reduce l to each structure one lattice.
+        l = torch.einsum('iax,ixb->iab', l_weight, l)                           # [# structure, abc (3), xyz (3)]
         x = self.embedding_out_x(h)
         return l, x
     
@@ -457,8 +457,6 @@ if __name__ == "__main__":
     edges = batched_atom_graph.T
     print('edges index size:', edges.shape)
 
-    edge_attr = torch.ones(edges.shape[1], 1)                                           # TODO: remove or change to resonable attr if necessary
-
     atom_owners = batched_graph.atom_owners                                             # owners of batched atoms for feature indexing
     print('atom owners:', atom_owners)
 
@@ -505,20 +503,20 @@ if __name__ == "__main__":
     atom_owners = atom_owners.long()
     
     # Run EGNN
-    # l, x = egnn(h, l, f, edges, edge_attr, atom_owners)
-    # print(l, x)
+    l, x = egnn(h, l, f, edges, None, atom_owners)
+    print(l, x)
     
-    from e3nn import o3
-    R = o3.rand_matrix(1)[0]
+    # from e3nn import o3
+    # R = o3.rand_matrix(1)[0]
     
-    out = egnn(h, l, f, edges, edge_attr, atom_owners)
-    print('-'*30, 'BEFORE ROTATION', '-'*30)
-    print('lattice:\n', torch.einsum('iax,xb->iab', out[0], R))
-    print('fractional coordinates:\n', out[1])
+    # out = egnn(h, l, f, edges, None, atom_owners)
+    # print('-'*30, 'BEFORE ROTATION', '-'*30)
+    # print('lattice:\n', torch.einsum('iax,xb->iab', out[0], R))
+    # print('fractional coordinates:\n', out[1])
     
     
-    l = torch.einsum('iax,xb->iab', l,R)
-    out = egnn(h, l, f, edges, edge_attr, atom_owners)
-    print('-'*30, 'AFTER ROTATION', '-'*30)
-    print('lattice:\n',  out[0])
-    print('fractional coordinates:\n', out[1])
+    # l = torch.einsum('iax,xb->iab', l,R)
+    # out = egnn(h, l, f, edges, None,  atom_owners)
+    # print('-'*30, 'AFTER ROTATION', '-'*30)
+    # print('lattice:\n',  out[0])
+    # print('fractional coordinates:\n', out[1])

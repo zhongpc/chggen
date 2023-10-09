@@ -36,16 +36,6 @@ def mkdir(path: str):
         print("Folder exists")
     return path
 
-# dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/mptrj/MPtrj_debug.csv',
-#                         name = 'mptrj_debug',
-#                         prop_list = ['e_hull'],
-#                         )
-
-# dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/train.csv',
-# name = 'train_perov',
-# prop_list = ['heat_all'],
-# )
-
 dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv',
 name = 'zpc_debug',
 prop_list = ['heat_all'],
@@ -53,7 +43,6 @@ prop_list = ['heat_all'],
 
 
 ### test the lattice scaler ##
-
 def get_scaler(dataset, use_prop_scaler = False, 
                scaler_path = None):
     # Load once to compute property scaler
@@ -113,11 +102,6 @@ with open('./test_models/lattice_scaler', 'wb') as fp:
 
 
 data_list = [dataset[i] for i in range(len(dataset))]
-
-
-# data_batch = Batch.from_data_list(data_list= data_list)
-
-# dataloader = get_loader_batch(dataset=data_batch, batch_size=7)
 
 datamodule = CrystDataModule(train_dataset= dataset,
                              val_dataset= dataset,
