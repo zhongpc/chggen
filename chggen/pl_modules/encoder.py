@@ -813,3 +813,15 @@ class BatchedGraph:
             strains=strains,
             volumes=volumes,
         )
+        
+        
+class CompositionEncoder(nn.Module):
+    """Encoder for Composition.
+    
+    Args:
+        num_composition (int): number of compositions in the dataset.
+        
+    """
+    def __init__(self, num_composition: int) -> None:
+        """Initialize CompositionEncoder."""
+        pass

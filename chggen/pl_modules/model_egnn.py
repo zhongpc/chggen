@@ -31,6 +31,7 @@ from chggen.pl_modules.embeddings import (MAX_ATOMIC_NUM,
 from chggen.pl_modules.encoder import CHGNet_encoder
 from chggen.pl_modules.decoder_egnn import EGNNDecoder
 from chggen.pl_modules.condition import Classifier
+from chggen.pl_modules.wrapped_normal_distribution import wND
 
 
 
@@ -95,8 +96,9 @@ class CHGGen(BaseModule):
         self.save_hyperparameters(hparams_dict)
         self.lattice_scaler = lattice_scaler
         
-        # Initialize modulo operation.
-        self.pmodulo = PModulo().to(self.device)
+        # Initialize modulo operation and wrapped normal distribution.
+        self.pmodulo = PModulo()
+        self.wnd = wND(n=10)
         
         # Initialize encoders and decoder.
         if self.hparams.load_pretrain:              # Pretrained 3dencoder and no training.
@@ -112,7 +114,7 @@ class CHGGen(BaseModule):
         # TODO: Add the 1D encoder to encode composition into latents.
         self.encoder1d = None
                 
-        self.decoder = EGNNDecoder()
+        self.decoder = EGNNDecoder(num_noise_level=self.hparams.num_noise_level)
 
         # Initialize MLPs for decoding key states.
         self.fc_mu = nn.Linear(
@@ -258,22 +260,16 @@ class CHGGen(BaseModule):
         )
 
         # Sample noise levels.
-        # TODO: replace the Gaussian function to Wrapped Gaussian function.
-        noise_level_F = torch.randint(
+        sigma_step = torch.randint(             # Choose the same sigma step for both lattice and frac_coords denoise.
             0, self.sigmas_F.size(0), (batch.num_atoms.size(0),))
-        noise_level_F = self.sigmas_F[noise_level_F].to(self.device)
-        noise_level_L = torch.randint(
-            0, self.sigmas_L.size(0), (batch.num_atoms.size(0),))
-        noise_level_L = self.sigmas_L[noise_level_L].to(self.device)
-        type_noise_level = torch.randint(
-            0, self.type_sigmas.size(0), (batch.num_atoms.size(0),))
-        type_noise_level = self.type_sigmas[type_noise_level].to(self.device)
+        noise_level_F = self.sigmas_F[sigma_step].to(self.device)
+        noise_level_L = self.sigmas_L[sigma_step].to(self.device)
+        type_noise_level = self.type_sigmas[sigma_step].to(self.device)
 
-        sigmas_F_per_atom = noise_level_F.repeat_interleave(
-            batch.num_atoms, dim=0)
+        sigma_step_per_atom = sigma_step.to(self.device).repeat_interleave(batch.num_atoms, dim=0)
+        sigmas_F_per_atom = noise_level_F.repeat_interleave(batch.num_atoms, dim=0)
         sigmas_L_per_structure = noise_level_L
-        type_sigmas_per_atom = type_noise_level.repeat_interleave(
-                batch.num_atoms, dim=0)
+        type_sigmas_per_atom = type_noise_level.repeat_interleave(batch.num_atoms, dim=0)
 
         # Add noise to atom types and sample atom types.
         # atom_type_probs = (
@@ -292,6 +288,7 @@ class CHGGen(BaseModule):
         noisy_latt = lattices + latt_noises_per_structure                   # (num_structures, 9)
         
         pred_latt_diff, pred_frac_coord_diff = self.decoder(
+            sigma_step = sigma_step_per_atom,
             atomic_numbers = batch.atom_types.to(self.device),
             noisy_lattices = noisy_latt.repeat_interleave(batch.num_atoms, dim=0).reshape(-1,3,3).to(self.device),  # Accormmadate EGNN structure
             noisy_frac_coords = noisy_frac_coords, 
@@ -490,6 +487,7 @@ class CHGGen(BaseModule):
 
                 # forward to decoder for denoising, output is the score of lattices and frac_coords
                 l_score_per_structure, f_score = self.decoder(
+                    sigma_step = ii_sigma,
                     atomic_numbers = Z,
                     noisy_lattices = l,
                     noisy_frac_coords = f,   
@@ -1001,12 +999,13 @@ class CHGGen(BaseModule):
         batch: Batch,
     ) -> torch.Tensor:
         """Compute loss for coordinates."""
-        target_cart_coord_diff = batch.frac_coords - noisy_frac_coords
-        target_cart_coord_diff = target_cart_coord_diff / sigmas_per_atom[:, None]**2
-        pred_frac_coord_diff = pred_frac_coord_diff / sigmas_per_atom[:, None] # TODO: Check should we divide sigma here.
+        target_cart_coord_diff = self.wnd.to(self.device).log_grad(noisy_frac_coords, mu=batch.frac_coords, sigma=sigmas_per_atom[:,None].repeat_interleave(3, dim=-1))
+        # target_cart_coord_diff = batch.frac_coords - noisy_frac_coords
+        # target_cart_coord_diff = target_cart_coord_diff / sigmas_per_atom[:, None]**2
+        # pred_frac_coord_diff = pred_frac_coord_diff / sigmas_per_atom[:, None]  # TODO: Check should we divide sigma here.
 
         loss_per_atom = torch.sum((target_cart_coord_diff - pred_frac_coord_diff)**2, dim=1)
-        loss_per_atom = 0.5 * loss_per_atom * sigmas_per_atom**2
+        loss_per_atom = 0.5 * loss_per_atom * sigmas_per_atom**2                # TODO: Add estimation for lambda_i, because the sigma^2 scheme is not suitable for warpped normal distribution.
         return scatter(loss_per_atom, batch.batch, reduce='mean').mean()
 
     def type_loss(

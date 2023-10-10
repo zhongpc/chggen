@@ -1,16 +1,13 @@
+"""EGNN Decoder for predicting noise for lattice and fractional coordinates."""
+
+from typing import Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from chggen.pl_modules.embeddings import MAX_ATOMIC_NUM
-from chggen.common.data_utils import get_pbc_distances, frac_to_cart_coords, cart_to_frac_coords, radius_graph_pbc
-
-from pymatgen.core import Structure
-from chgnet.model.model import BatchedGraph
-from chgnet.graph.converter import CrystalGraphConverter
-from chggen.pl_modules.encoder import CHGNet_encoder
-from typing import Tuple
-import numpy as np
+from chggen.pl_modules.embeddings.position_embedding import PositionEmbedding
 
 NUM_SPECIES = 94                                                # Number of species in the dataset.
 
@@ -192,8 +189,6 @@ class E_GCL(nn.Module):
                 [l13, l23, l33]]
             Then the lattice feature should be L^TL to accommodate equivariance.
             (RL)^T@(RL) = L^TR^TRL = L^TL
-            
-        TODO: Adapt it with Niggli strategy.
         """                    
         # l_T = torch.transpose(l, dim0=1, dim1=2)            # l_T [batch, abc (3), xyz (3)]
         l_feat = torch.einsum('iax,ibx->iab', l, l)       
@@ -387,19 +382,21 @@ class EGNN(nn.Module):
 class EGNNDecoder(nn.Module):
     """EGNN Decoder for predicting noise for lattice and fractional coordinates."""
 
-    def __init__(self) -> None:
+    def __init__(self, num_noise_level: int) -> None:
         """Initialize EGNNDecoder with model parameters."""
         super(EGNNDecoder, self).__init__()
         self.egnn = EGNN(
-            in_node_nf=NUM_SPECIES,
+            in_node_nf=NUM_SPECIES + 64,    # h_z and h_p
             hidden_nf=32,
             in_edge_nf=0,
             ft_basis=10,
-            x_dim= 3,
+            x_dim=3,
         )
+        self.num_noise_level = num_noise_level
 
     def forward(
         self, 
+        sigma_step: int,
         atomic_numbers,
         noisy_lattices,
         noisy_frac_coords, 
@@ -409,6 +406,7 @@ class EGNNDecoder(nn.Module):
         """ Decode with diffusion model using EGNN framework.
         
         Args:
+            sigma_step (int): step of sigma for the model. The range is [0, num_noise_level).
             atomic_numbers (Tensor): atomic number with shape like (N_atoms). 
                 NOTE: atomic numbers starts from 1. If one hot coding is used, substraction of 1 is needed ahead.
             noisy_lattices (Tensor): noisy lattices before denoising with shape like (N_atoms, 3, 3).
@@ -423,10 +421,15 @@ class EGNNDecoder(nn.Module):
         
         # TODO: Check updating strategy in the chggen model. Whether output noise or denoised results.
         """
-        # atomic number embedding.
-        h = F.one_hot(atomic_numbers-1, num_classes = MAX_ATOMIC_NUM).float()
+        # Atomic number embedding.
+        h_z = F.one_hot(atomic_numbers-1, num_classes = MAX_ATOMIC_NUM).float()
+        
+        # Position embedding.
+        pe = PositionEmbedding(max_position_len = self.num_noise_level, model_dim = 64)
+        h_p = pe.to(h_z.device)(sigma_step)
+        
         lattice_score, frac_coords_score = self.egnn(
-            h = h, 
+            h = torch.cat((h_z, h_p), dim=-1), 
             l = noisy_lattices, 
             x = noisy_frac_coords, 
             atom_owners = atom_owners,

@@ -32,13 +32,13 @@ def mkdir(path: str) -> None:
 
 # Dataset.
 train_dataset = CHGNetDataset(
-    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/test_zpc.csv', # train.csv
+    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/train.csv', # train.csv
     name = 'train_perov',
     prop_list = ['heat_all'],
 )
 
 val_dataset = CHGNetDataset(
-    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/test_zpc.csv', # val.csv
+    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/val.csv', # val.csv
     name = 'val_perov',
     prop_list = ['heat_all'],
 )
