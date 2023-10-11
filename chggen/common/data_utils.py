@@ -651,19 +651,19 @@ class StandardScalerTorch(object):
 
 
 def get_scaler_from_data_list(data_list, key):
+    """Get scaler (std, mean) assigned by key from data_list."""
     targets = torch.tensor([d[key] for d in data_list])
     scaler = StandardScalerTorch()
     scaler.fit(targets)
     return scaler
 
 
-def get_scaler(dataset = None, use_prop_scaler = False, 
-               scaler_path = None):
-    # Load once to compute property scaler
+def get_scaler(dataset = None, use_prop_scaler = False, scaler_path = None):
+    """Get scalers (mean, std) from scaler_path or from data."""
     if scaler_path is None:
         lattice_scaler = get_scaler_from_data_list(
             dataset.cached_data,
-            key='scaled_lattice')
+            key='reduced_lengths_and_angles')
         if use_prop_scaler:
             NotImplementedError("Not implemented the multi prop scaler yet.")
     else:
@@ -738,8 +738,25 @@ def preprocess_tensors(crystal_array_list, niggli, primitive, graph_method):
         sorted(unordered_results, key=lambda x: x['batch_idx']))
     return ordered_results
 
+def add_reduced_lattice_prop(data_list: dict, lattice_scale_method: str) -> None:
+    """Add reduced_lattice property to data_list."""
+    for dict in data_list:
+        # the indexes are brittle if more objects are returned
+        lattice = dict['lattice']
+        num_atoms =  dict['num_atoms'] 
+        assert lattice.shape == (3,3)
+        assert isinstance(num_atoms, int)
 
-def add_scaled_lattice_prop(data_list, lattice_scale_method):
+        if lattice_scale_method == 'scale_length':
+            lattice = lattice / float(num_atoms)**(1/3)
+        else:
+            raise NotImplementedError(f"Unknown lattice_scale_method: {lattice_scale_method}")
+        
+        dict['reduced_lattice'] = lattice
+    return None
+
+def add_reduced_lengths_and_angles_prop(data_list: dict, lattice_scale_method: str) -> None:
+    """Add reduced_lengths_and_angles property to data_list."""
     for dict in data_list:
         # the indexes are brittle if more objects are returned
         lengths = dict['lengths']
@@ -750,8 +767,12 @@ def add_scaled_lattice_prop(data_list, lattice_scale_method):
 
         if lattice_scale_method == 'scale_length':
             lengths = lengths / float(num_atoms)**(1/3)
-
-        dict['scaled_lattice'] = np.concatenate([lengths, angles])
+        else:
+            raise NotImplementedError(f"Unknown lattice_scale_method: {lattice_scale_method}")
+        
+        dict['reduced_lengths_and_angles'] = np.concatenate([lengths, angles])
+    
+    return None
 
 
 def mard(targets, preds):

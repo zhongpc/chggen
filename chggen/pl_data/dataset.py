@@ -11,7 +11,10 @@ from torch_geometric.data import Data
 
 from pymatgen.core import Structure
 
-from chggen.common.data_utils import add_scaled_lattice_prop
+from chggen.common.data_utils import (
+    add_reduced_lattice_prop, 
+    add_reduced_lengths_and_angles_prop
+)
 from chgnet.graph.converter import CrystalGraphConverter
 
 
@@ -117,8 +120,9 @@ class CHGNetDataset(Dataset):
             primitive=self.primitive,
             prop_list= prop_list)
         
-        # Niggli reduction.
-        add_scaled_lattice_prop(self.cached_data, lattice_scale_method)
+        # Niggli reduction on lattice, lengths and angles - scale lengths and angles by num of atoms.
+        add_reduced_lattice_prop(self.cached_data, lattice_scale_method)
+        add_reduced_lengths_and_angles_prop(self.cached_data, lattice_scale_method)
         self.lattice_scaler = None
         self.scaler = None
 
@@ -134,7 +138,8 @@ class CHGNetDataset(Dataset):
             prop_list.append(prop)
 
         crys_graph = data_dict['crys_graph']
-        lattice = data_dict['lattice']
+        lattice = data_dict['lattice']                      # (num of structure, 9)
+        reduced_lattice = data_dict['reduced_lattice']      # (num of structure, 9)
         frac_coords = data_dict['frac_coords']
         atom_types = data_dict['atom_types']
         lengths = data_dict['lengths']
@@ -148,11 +153,12 @@ class CHGNetDataset(Dataset):
             x=torch.LongTensor(atom_types),
             crys_graph=crys_graph,
             edge_index=torch.LongTensor(crys_graph.atom_graph).T,
+            lattices=torch.Tensor(lattice).view(1, -1),
+            reduced_lattices=torch.Tensor(reduced_lattice).view(1, -1),
             frac_coords=torch.Tensor(frac_coords),
             atom_types=torch.LongTensor(atom_types),
-            lengths=torch.Tensor(lengths).view(1, -1),
-            angles=torch.Tensor(angles).view(1, -1),
-            lattices=torch.Tensor(lattice).view(1, -1),
+            lengths = torch.Tensor(lengths).view(1, -1),
+            angles = torch.Tensor(angles).view(1, -1),
             num_atoms = num_atoms,
             properties = torch.Tensor(prop_list).view(1, -1),
         )

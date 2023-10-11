@@ -18,11 +18,8 @@ from chgnet.graph import CrystalGraph
 from chggen.chgnet.chgnet.model.model import BatchedGraph
 from chggen.common.data_utils import (
     EPSILON, 
-    cart_to_frac_coords, 
     mard, 
     lengths_angles_to_volume,
-    frac_to_cart_coords, 
-    min_distance_sqr_pbc
     )
 from chggen.common.operations import PModulo
 from chggen.pl_modules.embeddings import (MAX_ATOMIC_NUM, 
@@ -79,8 +76,8 @@ class CHGGen(BaseModule):
         self, 
         hparams_dict: dict = {'latent_dim': 256, 'hidden_dim': 128, 'property_dim': 1, 'load_pretrain': True, 'fc_num_layers': 2, 
                         'sigma_F_begin': 1.0, 'sigma_F_end': 0.01, 
-                        'sigma_L_begin': 10.0, 'sigma_Lend': 0.01, 
-                        'type_sigma_begin': 5.0, 'type_sigma_end': 0.01,
+                        'sigma_L_begin': 1.0, 'sigma_Lend': 0.01, 
+                        'type_sigma_begin': 50.0, 'type_sigma_end': 0.01,
                         'max_atoms': 20, 'predict_property': False, 'num_noise_level': 50, 
                         'lattice_scale_method': 'scale_length', 
                         'cost_natom': 1.0, 'cost_latt': 10.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 1.0,
@@ -250,18 +247,16 @@ class CHGGen(BaseModule):
         
         mu, log_var, z = self.encode(graphs)
         (pred_num_atoms,                        # Predicted number of atoms
-        pred_lengths_and_angles,                # Predicted recovered lengths and angles
-        # pred_lengths,                         
-        # pred_angles, 
-        _,
-        _,
+        pred_lengths_and_angles,                # Predicted Niggli reduced and scaled lengths and angles.  
+        pred_lengths,                           # Predicted Niggli unreduced and unscaled recovered lengths.
+        pred_angles,                            # Same as above.
         pred_composition_per_atom) = self.decode_stats(
             z, batch.num_atoms, batch.lengths, batch.angles, teacher_forcing,
         )
 
         # Sample noise levels.
         sigma_step = torch.randint(             # Choose the same sigma step for both lattice and frac_coords denoise.
-            0, self.sigmas_F.size(0), (batch.num_atoms.size(0),))
+            0, self.hparams.num_noise_level, (batch.num_atoms.size(0),))
         noise_level_F = self.sigmas_F[sigma_step].to(self.device)
         noise_level_L = self.sigmas_L[sigma_step].to(self.device)
         type_noise_level = self.type_sigmas[sigma_step].to(self.device)
@@ -277,15 +272,16 @@ class CHGGen(BaseModule):
         #     pred_composition_per_atom * type_sigmas_per_atom[:, None])
         # rand_atom_types = torch.multinomial(input=atom_type_probs, num_samples=1).squeeze(1) + 1
         
-        # Add noise to fractional coordinates and lattices.
+        # Add noise to fractional coordinates and Niggli reduced but no scaled lattices.
+        # This is for changing the extensive parameters to intensive parameters.
         frac_noises_per_atom = torch.randn_like(batch.frac_coords) * sigmas_F_per_atom[:, None]
-        latt_noises_per_structure = torch.randn_like(batch.lattices) * sigmas_L_per_structure[:, None]
+        latt_noises_per_structure = torch.randn_like(batch.reduced_lattices) * sigmas_L_per_structure[:, None]  # (num_structures, 9)
         
         frac_coords = batch.frac_coords
-        lattices = batch.lattices
+        lattices = batch.reduced_lattices
 
-        noisy_frac_coords =  self.pmodulo.to(self.device)(frac_coords + frac_noises_per_atom)             # (num_atoms, 3)
-        noisy_latt = lattices + latt_noises_per_structure                   # (num_structures, 9)
+        noisy_frac_coords =  self.pmodulo.to(self.device)(frac_coords + frac_noises_per_atom)   # (num_atoms, 3)
+        noisy_latt = lattices + latt_noises_per_structure                                       # (num_structures, 9)
         
         pred_latt_diff, pred_frac_coord_diff = self.decoder(
             sigma_step = sigma_step_per_atom,
@@ -326,8 +322,8 @@ class CHGGen(BaseModule):
             'property_loss': property_loss,
             'pred_num_atoms': pred_num_atoms,
             'pred_lengths_and_angles': pred_lengths_and_angles,
-            # 'pred_lengths': pred_lengths,
-            # 'pred_angles': pred_angles,
+            'pred_lengths': pred_lengths,
+            'pred_angles': pred_angles,
             'pred_cart_coord_diff': pred_frac_coord_diff,
             'pred_atom_types': pred_atom_types,
             'pred_composition_per_atom': pred_composition_per_atom,
@@ -384,7 +380,6 @@ class CHGGen(BaseModule):
         rand_atom_types = self.sample_composition(
             pred_composition_per_atom, num_atoms)
         return rand_frac_coords, rand_atom_types
-
 
     # =================================================================
     # Sample new materials.
@@ -560,7 +555,10 @@ class CHGGen(BaseModule):
         Returns:
             num_atoms (Tensor): number of atoms for each structures. The shape should 
                 be (batch_size).
-            lengths (Tensor): lattice lengths. The shape should be (batch_size, 3).
+            pred_lengths_and_angles (Tensor): predicted lengths and angles. It is Niggli 
+                reduced and standardized (sacled). The shape should be (batch_size, 6).
+            lengths (Tensor): lattice lengths. It is 
+            The shape should be (batch_size, 3).
             angles (Tensor): lattice angles. The shape should be (batch_size, 3).
             composition_per_atom
         """
@@ -691,7 +689,7 @@ class CHGGen(BaseModule):
         batch_c_grad = torch.cat(c_grad, dim = 0).detach()
         del c_grad
         return batch_c_grad, batch_forces
-
+    
     # Training information.
     def compute_stats(self, batch, outputs, prefix):
         num_atom_loss = outputs['num_atom_loss']
@@ -745,8 +743,7 @@ class CHGGen(BaseModule):
             pred_angles = scaled_preds[:, 3:]
 
             if self.hparams.lattice_scale_method == 'scale_length':
-                pred_lengths = pred_lengths * \
-                    batch.num_atoms.view(-1, 1).float()**(1/3)
+                pred_lengths = pred_lengths * batch.num_atoms.view(-1, 1).float()**(1/3)
             lengths_mard = mard(batch.lengths, pred_lengths)
             angles_mae = torch.mean(torch.abs(pred_angles - batch.angles))
 
@@ -791,14 +788,14 @@ class CHGGen(BaseModule):
         ## TODO: change the loss_step to average loss of the epoch
         ## TODO: get loss_avg
         print("*"*100)
-        print(f"Epoch {self.current_epoch} - loss: {metrics.get('train_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - num_atom_loss: {metrics.get('train_natom_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - lattice_loss: {metrics.get('train_lattice_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - latt_loss: {metrics.get('train_latt_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - coord_loss: {metrics.get('train_coord_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - type_loss: {metrics.get('train_type_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - kld_loss: {metrics.get('train_kld_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - composition_loss: {metrics.get('train_composition_loss_step', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - loss: {metrics.get('train_loss_epoch', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - num_atom_loss: {metrics.get('train_natom_loss_epoch', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - lattice_loss: {metrics.get('train_lattice_loss_epoch', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - latt_loss: {metrics.get('train_latt_loss_epoch', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - coord_loss: {metrics.get('train_coord_loss_epoch', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - type_loss: {metrics.get('train_type_loss_epoch', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - kld_loss: {metrics.get('train_kld_loss_epoch', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - composition_loss: {metrics.get('train_composition_loss_epoch', 0):.4f}")
     
     # Functions for lattice convertion, and structure building up.
     def get_lattices(self, lengths, angles, num_atoms):
@@ -904,11 +901,15 @@ class CHGGen(BaseModule):
             num_atoms (Tensor): number of atoms for each structures. The shape should
                 be (batch_size). It is used to scale the predicted lattice to the correct 
                 size. See more details in Niggli Reduction.
-            pred_lengths_and_angles (Tensor): predicted lattice lengths and angles.
+                
         Returns:
-
-            pred_lengths (Tensor): lattice lengths. The shape should be (batch_size, 3).
-            pred_angles (Tensor): lattice angles. The shape should be (batch_size, 3).        
+            pred_lengths_and_angles (Tensor): predicted lattice lengths and angles. It is 
+                Niggli reduced and standardized (sacled). The shape should be (batch_size, 
+                6).
+            pred_lengths (Tensor): lattice lengths. It is recovered back to Niggli unreduced
+                and unscaled space. The shape should be (batch_size, 3).
+            pred_angles (Tensor): lattice angles. It is recovered back to Niggli unreduced
+                and unscaled space. The shape should be (batch_size, 3).        
         """
         self.lattice_scaler.match_device(z)
         pred_lengths_and_angles = self.fc_lattice(z)  # (N, 6)
@@ -940,8 +941,8 @@ class CHGGen(BaseModule):
         """Compute loss for lattice reconstruction. 
         
         Args:
-            pred_lengths_and_angles (Tensor): standarized and Niggli reduced lengths and angles for lattices.
-                The shape should be (num_structures, 6).
+            pred_lengths_and_angles (Tensor): Predicted Niggli reduced and scaled 
+                lengths and angles. The shape should be (num_structures, 6).
             batch (Batch): batched data.
         
         Returns:
@@ -973,17 +974,19 @@ class CHGGen(BaseModule):
         """Compute loss for lattice denoising.
         
         Args:
-            pred_latt_diff (Tensor): the predicted lattice difference with shape
-                (num_structures, 9).
-            noisy_latt (Tensor): the noisy lattice with shape (num_structures, 9).
-            sigmas_per_atom (Tensor): the standard deviation of noise added to lattices.
-                The shape should be (num_structures,).
+            pred_latt_diff (Tensor): the predicted Niggli reduced but unscaled 
+                lattice difference. The shape should be (num_structures, 9).
+            noisy_latt (Tensor): the noisy Niggli reduced but unscaled lattice. 
+                The shape should be (num_structures, 9).
+            sigmas_per_atom (Tensor): the standard deviation of noise added to 
+                lattice in Niggli reduced and unscaled space. The shape should 
+                be (num_structures,).
             batch (Batch): batched data.
         
         Returns:
             loss (Tensor): Mean squared error for lattices in Cartesian space.
         """
-        target_latt_diff = batch.lattices - noisy_latt
+        target_latt_diff = batch.reduced_lattices - noisy_latt
         target_latt_diff = target_latt_diff / sigmas_per_atom[:, None]**2
         pred_latt_diff = pred_latt_diff / sigmas_per_atom[:, None]       # TODO: Check should we divide sigma here.
         

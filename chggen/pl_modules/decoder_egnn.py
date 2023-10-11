@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from chggen.pl_modules.embeddings import MAX_ATOMIC_NUM
 from chggen.pl_modules.embeddings.position_embedding import PositionEmbedding
 
-NUM_SPECIES = 94                                                # Number of species in the dataset.
+
 
 def unsorted_segment_sum(
     data: torch.Tensor, segment_ids: torch.Tensor, num_segments: int
@@ -386,7 +386,7 @@ class EGNNDecoder(nn.Module):
         """Initialize EGNNDecoder with model parameters."""
         super(EGNNDecoder, self).__init__()
         self.egnn = EGNN(
-            in_node_nf=NUM_SPECIES + 64,    # h_z and h_p
+            in_node_nf=MAX_ATOMIC_NUM + 64,    # h_z and h_p
             hidden_nf=32,
             in_edge_nf=0,
             ft_basis=10,

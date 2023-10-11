@@ -53,15 +53,14 @@ class CrystDataModule(pl.LightningDataModule):
         """Download the dataset."""
         pass
 
-    def get_scaler(self, use_prop_scaler = False, scaler_path = None):
-        # Load once to compute property scaler
-        if scaler_path is None:
+    def get_scaler(self, scaler_path: str = None):
+        """Get scalers (mean, std) from scaler_path or from data."""
+        if scaler_path is None:             # Estimate the scaler from data.
             self.lattice_scaler = get_scaler_from_data_list(
-                self.train_dataset.cached_data,
-                key='scaled_lattice')
-            if use_prop_scaler:
-                NotImplementedError("Not implemented the multi prop scaler yet.")
-        else:
+                self.train_dataset.cached_data, key='reduced_lengths_and_angles',
+            )
+
+        else:                               # Load the scaler from scaler_path.
             self.lattice_scaler = torch.load(
                 Path(scaler_path) / 'lattice_scaler.pt')
 
