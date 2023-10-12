@@ -84,8 +84,8 @@ checkpoint_callback = ModelCheckpoint(
 )
 
 trainer = pl.Trainer(
-    accelerator = "cpu", 
-    # devices = [0],
+    accelerator = "gpu", 
+    devices = [0],
     max_epochs = 30,
     callbacks = [checkpoint_callback, TQDMProgressBar(refresh_rate = -1)],
     #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training                    
