@@ -22,9 +22,7 @@ from chggen.common.data_utils import (
     lengths_angles_to_volume,
     )
 from chggen.common.operations import PModulo
-from chggen.pl_modules.embeddings import (MAX_ATOMIC_NUM, 
-                                          KHOT_EMBEDDINGS,
-                                          )
+from chggen.pl_modules.embeddings import MAX_ATOMIC_NUM
 from chggen.pl_modules.encoder import CHGNet_encoder
 from chggen.pl_modules.decoder_egnn import EGNNDecoder
 from chggen.pl_modules.condition import Classifier
@@ -177,11 +175,6 @@ class CHGGen(BaseModule):
             self.hparams.num_noise_level), 
             dtype=torch.float32,
         )
-
-        # Initialize embedding parameters.
-        self.embedding = torch.zeros(100, 92)
-        for i in range(100):
-            self.embedding[i] = torch.tensor(KHOT_EMBEDDINGS[i + 1])
 
         # Initialize lattice scaler and scaler.
         self.lattice_scaler = lattice_scaler
@@ -924,7 +917,7 @@ class CHGGen(BaseModule):
     def predict_composition(self, z, num_atoms):
         """Predict composition from latent embeddings and number of atoms."""
         z_per_atom = z.repeat_interleave(num_atoms, dim=0)        
-        pred_composition_per_atom = self.fc_composition(z_per_atom)
+        pred_composition_per_atom = self.fc_composition(z_per_atom-1)
         return pred_composition_per_atom
 
     # Loss functions.

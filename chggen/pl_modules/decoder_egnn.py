@@ -422,10 +422,10 @@ class EGNNDecoder(nn.Module):
         # TODO: Check updating strategy in the chggen model. Whether output noise or denoised results.
         """
         # Atomic number embedding.
-        h_z = F.one_hot(atomic_numbers-1, num_classes = MAX_ATOMIC_NUM).float()
+        h_z = F.one_hot(atomic_numbers - 1, num_classes = MAX_ATOMIC_NUM).float()
         
         # Position embedding.
-        pe = PositionEmbedding(max_position_len = self.num_noise_level, model_dim = 64)
+        pe = PositionEmbedding(max_position_len = self.num_noise_level, model_dim = 64)    
         h_p = pe.to(h_z.device)(sigma_step)
         
         lattice_score, frac_coords_score = self.egnn(

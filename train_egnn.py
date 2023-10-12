@@ -31,13 +31,13 @@ def mkdir(path: str) -> None:
 
 # Dataset.
 train_dataset = CHGNetDataset(
-    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/test_zpc.csv', # train.csv
+    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/train.csv', # train.csv
     name = 'train_perov',
     prop_list = ['heat_all'],
 )
 
 val_dataset = CHGNetDataset(
-    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/test_zpc.csv', # val.csv
+    path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/val.csv', # val.csv
     name = 'val_perov',
     prop_list = ['heat_all'],
 )
@@ -84,8 +84,8 @@ checkpoint_callback = ModelCheckpoint(
 )
 
 trainer = pl.Trainer(
-    accelerator = "gpu", 
-    devices = [0],
+    accelerator = "cpu", 
+    # devices = [0],
     max_epochs = 30,
     callbacks = [checkpoint_callback, TQDMProgressBar(refresh_rate = -1)],
     #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training                    
