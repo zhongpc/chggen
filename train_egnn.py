@@ -72,13 +72,13 @@ checkpoint_callback = ModelCheckpoint(
 
 trainer = pl.Trainer(
     accelerator = "gpu", 
-    devices = [0],
+    devices = [1],
     max_epochs = 10,
     callbacks = [checkpoint_callback, TQDMProgressBar(refresh_rate = 1)],
     #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training                    
 )
 
 trainer.fit(model = chggen, datamodule = datamodule)
-trainer.save_checkpoint("./test_models/perov/trainer_perov.ckpt")
+trainer.save_checkpoint("./test_models/perov/trainer_pos.ckpt")
 
 print("Done")

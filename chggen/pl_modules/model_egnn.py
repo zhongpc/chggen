@@ -490,7 +490,8 @@ class CHGGen(BaseModule):
                     edge_index = edge_index,
                 )
                 
-                l_score = l_score_per_structure  
+                # Recover Niggli reduction.
+                l_score = l_score_per_structure * ((num_atoms)**(1/3))[:, None, None]  
                 
                 pred_lattices_diff = l_score / sigma_L          # TODO: Check whether need the division.
                 pred_frac_coords_diff = f_score / sigma_F       # TODO: Check whether need the division.

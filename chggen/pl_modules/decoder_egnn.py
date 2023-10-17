@@ -348,6 +348,7 @@ class EGNN(nn.Module):
     def forward(
         self,
         h: torch.Tensor,
+        p_emb: torch.Tensor,
         l: torch.Tensor,
         x: torch.Tensor,
         atom_owners: torch.Tensor,
@@ -358,6 +359,7 @@ class EGNN(nn.Module):
         
         Args:
             h (Tensor): node features.
+            p_emb (Tensor): position embedding.
             l (Tensor): lattice vectors with shape like (batched number of nodes, 
                 lattice index (3), components (3)).
             x (Tensor): coordinates.
@@ -367,6 +369,7 @@ class EGNN(nn.Module):
             edge_attr (Tensor, optional): edge features.
         """
         h = self.embedding_in(h)
+        h += p_emb
         for i in range(0, self.n_layers):
             h = self._modules["gcl_%d" % i](h, l, x, edge_index, edge_attr=edge_attr)
         
@@ -386,7 +389,7 @@ class EGNNDecoder(nn.Module):
         """Initialize EGNNDecoder with model parameters."""
         super(EGNNDecoder, self).__init__()
         self.egnn = EGNN(
-            in_node_nf=MAX_ATOMIC_NUM + 64,    # h_z and h_p
+            in_node_nf=MAX_ATOMIC_NUM,    
             hidden_nf=32,
             in_edge_nf=0,
             ft_basis=10,
@@ -425,11 +428,12 @@ class EGNNDecoder(nn.Module):
         h_z = F.one_hot(atomic_numbers - 1, num_classes = MAX_ATOMIC_NUM).float()
         
         # Position embedding.
-        pe = PositionEmbedding(max_position_len = self.num_noise_level, model_dim = 64)    
+        pe = PositionEmbedding(max_position_len = self.num_noise_level, model_dim = 32)    
         h_p = pe.to(h_z.device)(sigma_step)
         
         lattice_score, frac_coords_score = self.egnn(
-            h = torch.cat((h_z, h_p), dim=-1), 
+            h = h_z,
+            p_emb = h_p, 
             l = noisy_lattices, 
             x = noisy_frac_coords, 
             atom_owners = atom_owners,
