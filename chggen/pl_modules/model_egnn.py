@@ -35,19 +35,20 @@ def build_mlp(
     hidden_dim: int, 
     fc_num_layers: int, 
     out_dim: int, 
-    use_layernorm: bool = False
+    use_layernorm: bool = False,
+    activation: nn.Module = nn.SiLU(),
 ) -> nn.Module:
-    """Build multilayer perceptron (MLP) with SiLU activation function."""
+    """Build multilayer perceptron (MLP) with activation function."""
     if use_layernorm:
-        mods = [nn.Linear(in_dim, hidden_dim), nn.LayerNorm(hidden_dim), nn.SiLU()]
+        mods = [nn.Linear(in_dim, hidden_dim), nn.LayerNorm(hidden_dim), activation]
     else:
-        mods = [nn.Linear(in_dim, hidden_dim), nn.SiLU()]
+        mods = [nn.Linear(in_dim, hidden_dim), activation]
 
     for i in range(fc_num_layers-1):
         if use_layernorm:
-            mods += [nn.Linear(hidden_dim, hidden_dim), nn.LayerNorm(hidden_dim), nn.SiLU()]
+            mods += [nn.Linear(hidden_dim, hidden_dim), nn.LayerNorm(hidden_dim), activation]
         else:
-            mods += [nn.Linear(hidden_dim, hidden_dim), nn.SiLU()]
+            mods += [nn.Linear(hidden_dim, hidden_dim), activation]
     mods += [nn.Linear(hidden_dim, out_dim)]
     return nn.Sequential(*mods)
 
@@ -91,6 +92,10 @@ class CHGGen(BaseModule):
         self.save_hyperparameters(hparams_dict)
         self.lattice_scaler = lattice_scaler
         
+        # Initialize cross entropy loss for composition.
+        # self.cross_entropy_composition = nn.CrossEntropyLoss(reduction="none")
+        self.mse_composition = nn.MSELoss(reduction="none")
+        
         # Initialize modulo operation and wrapped normal distribution.
         self.pmodulo = PModulo()
         self.wnd = wND(n=10)
@@ -106,6 +111,7 @@ class CHGGen(BaseModule):
             self.encoder3d.return_crys_feature = True
             for param in self.encoder3d.parameters():
                 param.requires_grad = True
+
         # TODO: Add the 1D encoder to encode composition into latents.
         self.encoder1d = None
                 
@@ -144,6 +150,7 @@ class CHGGen(BaseModule):
             self.hparams.hidden_dim,
             self.hparams.fc_num_layers, 
             MAX_ATOMIC_NUM,
+            activation=nn.ReLU(),                   # Gradient disappears for SiLU.
         )
         if self.hparams.predict_property:
             self.fc_property = build_mlp(
@@ -243,7 +250,7 @@ class CHGGen(BaseModule):
         pred_lengths_and_angles,                # Predicted Niggli reduced and scaled lengths and angles.  
         pred_lengths,                           # Predicted Niggli unreduced and unscaled recovered lengths.
         pred_angles,                            # Same as above.
-        pred_composition_per_atom) = self.decode_stats(
+        pred_composition) = self.decode_stats(
             z, batch.num_atoms, batch.lengths, batch.angles, teacher_forcing,
         )
 
@@ -253,7 +260,7 @@ class CHGGen(BaseModule):
         noise_level_F = self.sigmas_F[sigma_step].to(self.device)
         noise_level_L = self.sigmas_L[sigma_step].to(self.device)
         type_noise_level = self.type_sigmas[sigma_step].to(self.device)
-
+        
         sigma_step_per_atom = sigma_step.to(self.device).repeat_interleave(batch.num_atoms, dim=0)
         sigmas_F_per_atom = noise_level_F.repeat_interleave(batch.num_atoms, dim=0)
         sigmas_L_per_structure = noise_level_L
@@ -290,7 +297,7 @@ class CHGGen(BaseModule):
         # Compute reconstruction loss and denoising loss.
         num_atom_loss = self.num_atom_loss(pred_num_atoms, batch)
         lattice_loss = self.lattice_loss(pred_lengths_and_angles, batch)
-        composition_loss = self.composition_loss(pred_composition_per_atom, batch.atom_types, batch)
+        composition_loss = self.composition_loss(pred_composition, batch)
         
         latt_loss = self.latt_loss(pred_latt_diff.reshape(-1,9), noisy_latt, sigmas_L_per_structure, batch)
         coord_loss = self.coord_loss(pred_frac_coord_diff, noisy_frac_coords, sigmas_F_per_atom, batch)
@@ -319,7 +326,7 @@ class CHGGen(BaseModule):
             'pred_angles': pred_angles,
             'pred_cart_coord_diff': pred_frac_coord_diff,
             'pred_atom_types': pred_atom_types,
-            'pred_composition_per_atom': pred_composition_per_atom,
+            'pred_composition': pred_composition,
             'target_frac_coords': batch.frac_coords,
             'target_atom_types': batch.atom_types,
             'rand_frac_coords': noisy_frac_coords,
@@ -364,15 +371,15 @@ class CHGGen(BaseModule):
         eps = torch.randn_like(std)
         return eps * std + mu
 
-    def generate_rand_init(self, pred_composition_per_atom, pred_lengths,
-                           pred_angles, num_atoms, batch):
-        rand_frac_coords = torch.rand(num_atoms.sum(), 3,
-                                      device=num_atoms.device)
-        pred_composition_per_atom = F.softmax(pred_composition_per_atom,
-                                              dim=-1)
-        rand_atom_types = self.sample_composition(
-            pred_composition_per_atom, num_atoms)
-        return rand_frac_coords, rand_atom_types
+    # def generate_rand_init(self, pred_composition, pred_lengths,
+    #                        pred_angles, num_atoms, batch):
+    #     rand_frac_coords = torch.rand(num_atoms.sum(), 3,
+    #                                   device=num_atoms.device)
+    #     pred_composition = F.softmax(pred_composition,
+    #                                           dim=-1)
+    #     rand_atom_types = self.sample_composition(
+    #         pred_composition, num_atoms)
+    #     return rand_frac_coords, rand_atom_types
 
     # =================================================================
     # Sample new materials.
@@ -427,42 +434,41 @@ class CHGGen(BaseModule):
         classifier = Classifier(prop_given= prop_guidance)
 
         # Obtain key states.
-        num_atoms, _, lengths, angles, composition_per_atom = self.decode_stats(
+        num_atoms, _, lengths, angles, composition = self.decode_stats(
             z, gt_num_atoms, 
         )
 
         # Obtain atom types.
         if gt_atom_types is None:
-            cur_atom_types = self.sample_composition(composition_per_atom, num_atoms)
+            cur_atom_types = self.sample_composition(composition, num_atoms)
         else:
             cur_atom_types = gt_atom_types
 
-        # Initialize coordinates.
+        # Initialize coordinates and lattices.
         cur_frac_coords = torch.rand((num_atoms.sum(), 3), device=z.device, requires_grad = False)
-        cur_lattices  = torch.rand((num_atoms.sum(), 3, 3), device=z.device, requires_grad = False)
+        cur_lattices = self.get_lattices(lengths, angles, num_atoms)
 
         # Annealed langevin dynamics.
-        for ii_sigma in tqdm(range(len(self.sigmas_F)), total=self.sigmas_F.size(0), disable=ld_kwargs.disable_bar):
-            sigma_F = self.sigmas_F[ii_sigma]
-            sigma_L = self.sigmas_L[ii_sigma]
-            if sigma_F < ld_kwargs.min_sigma:
+        for sigma_step in tqdm(range(self.hparams.num_noise_level), total=self.hparams.num_noise_level, disable=ld_kwargs.disable_bar):
+            sigma_F = self.sigmas_F[sigma_step]
+            sigma_L = self.sigmas_L[sigma_step]
+            if sigma_F < ld_kwargs.min_sigma:           # Stop if sigma is too small.
                 break
             step_size_F = ld_kwargs.step_lr * (sigma_F / self.sigmas_F[-1]) ** 2
             step_size_L = ld_kwargs.step_lr * (sigma_L / self.sigmas_L[-1]) ** 2
-
+            print('sigma step:', sigma_step)
             for step in range(ld_kwargs.n_step_each):
-                noise_frac = torch.randn_like(cur_frac_coords) * torch.sqrt(step_size_F * 2)    # TODO: Check why there is a 2.
-                noise_latt = torch.randn_like(cur_lattices) * torch.sqrt(step_size_L * 2)       # TODO: Check why there is a 2.
-
-                # Initilize lattices with given lengths, angles and num_atoms
-                cur_lattices = self.get_lattices(lengths, angles, num_atoms)
+                print('step:', step)
+                noise_frac = torch.randn_like(cur_frac_coords) * torch.sqrt(step_size_F * 2)    
+                noise_latt = torch.randn_like(cur_lattices) * torch.sqrt(step_size_L * 2)      
+                
                 structure_list = self.get_pymatgen_structure_from_lattice(
-                    cur_lattices, num_atoms, cur_frac_coords, cur_atom_types
+                    cur_lattices, num_atoms, cur_frac_coords, cur_atom_types,
                 )
                 
                 for s_gen in structure_list:
                     print(s_gen.composition.reduced_formula)
-            
+                print(structure_list)
                 crystal_graph_list = self.get_crystal_graph(structure_list)
                 batched_graph = BatchedGraph.from_graphs(
                                             crystal_graph_list,
@@ -470,12 +476,13 @@ class CHGGen(BaseModule):
                                             angle_basis_expansion=self.encoder3d.angle_basis_expansion,
                                             compute_stress= False,
                                         )
-                
-                Z, l, f, edge_index, atom_owners = self.batched_graph_stat(batched_graph= batched_graph, crys_graph_list= crystal_graph_list)
 
-                # forward to decoder for denoising, output is the score of lattices and frac_coords
+                Z, l, f, edge_index, atom_owners = self.batched_graph_stat(batched_graph=batched_graph, crys_graph_list=crystal_graph_list)
+                sigma_step_per_atom = torch.tensor([sigma_step], device=Z.device).repeat_interleave(len(Z), dim=0)
+                
+                # Forward to decoder for denoising, output is the score of lattices and frac_coords
                 l_score_per_structure, f_score = self.decoder(
-                    sigma_step = ii_sigma,
+                    sigma_step = sigma_step_per_atom,
                     atomic_numbers = Z,
                     noisy_lattices = l,
                     noisy_frac_coords = f,   
@@ -483,31 +490,27 @@ class CHGGen(BaseModule):
                     edge_index = edge_index,
                 )
                 
-                l_score = l_score_per_structure[atom_owners] # l_score is per atom in the batched graph
-
-                ## TODO: add the denoising part for updating lattices and frac_coords
-
-                pred_lattices_diff = l_score / sigma_L
-                pred_frac_coords_diff = f_score / sigma_F
-
-                cur_frac_coords = cur_frac_coords + step_size_F * pred_frac_coords_diff + noise_frac
+                l_score = l_score_per_structure  
                 
-                cur_lattices = cur_lattices[atom_owners] + step_size_L * pred_lattices_diff + noise_latt
+                pred_lattices_diff = l_score / sigma_L          # TODO: Check whether need the division.
+                pred_frac_coords_diff = f_score / sigma_F       # TODO: Check whether need the division.
+
+                cur_frac_coords = self.pmodulo.to(self.device)(cur_frac_coords + step_size_F * pred_frac_coords_diff + noise_frac)
+                cur_lattices = cur_lattices + step_size_L * pred_lattices_diff + noise_latt
 
                 #### need to update the lattice and frac ####
-                batch_c_grad, batch_forces = self.compute_grad(batched_graph= batched_graph, classifier= classifier, 
-                                                               ld_kwargs= ld_kwargs)
-
-                
-                # cur_cart_coords = frac_to_cart_coords(
-                #     cur_frac_coords, lengths, angles, num_atoms)
+                batch_c_grad, batch_forces = self.compute_grad(
+                    batched_graph=batched_graph,
+                    classifier=classifier, 
+                    ld_kwargs=ld_kwargs,
+                )
 
                 ## TODO: double check the scale and sign !
 
                 prop_disp = ld_kwargs.beta_c * batch_c_grad
                 force_disp = ld_kwargs.beta_f * batch_forces
                 
-                # clamp to the maximum displacement 0.5
+                # Clamp to the maximum displacement 0.5
                 prop_disp = torch.clamp(prop_disp, min = -0.5, max = 0.5)
                 force_disp = torch.clamp(force_disp, min = -0.5, max = 0.5)
 
@@ -547,38 +550,42 @@ class CHGGen(BaseModule):
         
         Returns:
             num_atoms (Tensor): number of atoms for each structures. The shape should 
-                be (batch_size).
+                be (num of atoms).
             pred_lengths_and_angles (Tensor): predicted lengths and angles. It is Niggli 
-                reduced and standardized (sacled). The shape should be (batch_size, 6).
-            lengths (Tensor): lattice lengths. It is 
-            The shape should be (batch_size, 3).
-            angles (Tensor): lattice angles. The shape should be (batch_size, 3).
-            composition_per_atom
+                reduced and standardized (sacled). The shape should be (num of atoms, 6).
+            lengths (Tensor): lattice lengths. It is Niggli unreduced and unscaled. The 
+                shape should be (num of atoms, 3).
+            angles (Tensor): lattice angles. Information is the same as above.
+            composition (Tensor): composition of each structure. The shape should be
+                (num of structures, MAX_ATOMIC_NUM).
         """
         
         if gt_num_atoms is not None:
             num_atoms = self.predict_num_atoms(z)
             pred_lengths_and_angles, lengths, angles = self.predict_lattice(z, gt_num_atoms)
-            composition_per_atom = self.predict_composition(z, gt_num_atoms)
-            composition_per_atom = F.softmax(composition_per_atom, dim=-1)
+            composition = self.predict_composition(z)
             if self.hparams.teacher_forcing_lattice and teacher_forcing:
                 lengths = gt_lengths
                 angles = gt_angles
         else:
             num_atoms = self.predict_num_atoms(z).argmax(dim=-1)
             pred_lengths_and_angles, lengths, angles = self.predict_lattice(z, num_atoms)
-            composition_per_atom = self.predict_composition(z, num_atoms)
-            composition_per_atom = F.softmax(composition_per_atom, dim=-1)
-        return num_atoms, pred_lengths_and_angles, lengths, angles, composition_per_atom
+            composition = self.predict_composition(z)
+        return num_atoms, pred_lengths_and_angles, lengths, angles, composition
 
     def sample_composition(self, composition_prob, num_atoms):
-        """Sample composition such that it exactly satisfies composition_prob."""
-        batch = torch.arange(
-            len(num_atoms), device=num_atoms.device).repeat_interleave(num_atoms)
-        assert composition_prob.size(0) == num_atoms.sum() == batch.size(0)
-        composition_prob = scatter(
-            composition_prob, index=batch, dim=0, reduce='mean')
-
+        """Sample composition such that it exactly satisfies composition_prob.
+        
+        Args:
+            composition_prob (Tensor): The composition probability. The shape should be
+                (num of structures, MAX_ATOMIC_NUM).
+            num_atoms (Tensor): The number of atoms for each structure. The shape should
+                be (num of structures).
+        
+        Returns:
+            all_sampled_comp (Tensor): The sampled composition. The shape should be
+                (num of atoms).
+        """
         all_sampled_comp = []
 
         for comp_prob, num_atom in zip(list(composition_prob), list(num_atoms)):
@@ -618,6 +625,7 @@ class CHGGen(BaseModule):
         return crystal_graph_list
     
     def batched_graph_stat(self, batched_graph, crys_graph_list):
+        """Batch graph states."""
         batched_atom_graph = batched_graph.batched_atom_graph
         
         edges_index = batched_atom_graph.T
@@ -914,11 +922,20 @@ class CHGGen(BaseModule):
             pred_lengths = pred_lengths * num_atoms.view(-1, 1).float()**(1/3)
         return pred_lengths_and_angles, pred_lengths, pred_angles
 
-    def predict_composition(self, z, num_atoms):
-        """Predict composition from latent embeddings and number of atoms."""
-        z_per_atom = z.repeat_interleave(num_atoms, dim=0)        
-        pred_composition_per_atom = self.fc_composition(z_per_atom-1)
-        return pred_composition_per_atom
+    def predict_composition(self, z):
+        """Predict composition from latent embeddings and number of atoms.
+        
+        Args:
+            z (Tensor): The latent embeddings of crystal structures. The shape 
+                should be (num of structures, latent_dim).
+        
+        Returns:
+            pred_composition (Tensor): predicted composition. The shape should 
+            be (num of structures, MAX_ATOMIC_NUM).
+        """        
+        pred_composition = self.fc_composition(z)
+        pred_composition = F.softmax(pred_composition, dim=-1)
+        return pred_composition
 
     # Loss functions.
     def num_atom_loss(self, pred_num_atoms: torch.Tensor, batch: Batch) -> torch.Tensor:
@@ -939,7 +956,8 @@ class CHGGen(BaseModule):
             batch (Batch): batched data.
         
         Returns:
-            loss (Tensor): Mean squared error for lattices in standarized and Niggli reduced space.
+            loss (Tensor): Mean squared error for lattices in scaled (standarized) and Niggli 
+                reduced space.
         """
         self.lattice_scaler.match_device(pred_lengths_and_angles)
         # Do standarization and Niggli reduction on target.
@@ -950,12 +968,27 @@ class CHGGen(BaseModule):
         return F.mse_loss(pred_lengths_and_angles, target_lengths_and_angles)
 
     def composition_loss(
-        self, pred_composition_per_atom: torch.Tensor, target_atom_types: torch.Tensor, batch: Batch,
+        self, 
+        pred_composition: torch.Tensor,
+        batch: Batch,
     ) -> torch.Tensor:
-        """Compute loss for composition."""
-        target_atom_types = target_atom_types - 1
-        loss = F.cross_entropy(pred_composition_per_atom, target_atom_types, reduction='none')
-        return scatter(loss, batch.batch, reduce='mean').mean()
+        """Compute loss for composition.
+        
+        Args:
+            pred_composition (Tensor): predicted composition. The shape should
+                be (num of structures, MAX_ATOMIC_NUM).
+            batch (Batch): batched data.
+            NOTE: The atomic number index for pred_composition start from 0.
+        Returns:
+            loss (Tensor): Cross entropy loss for composition.
+        """
+        # Compute target composition from batch.
+        atom_types_one_hot = F.one_hot(batch.atom_types-1, num_classes=MAX_ATOMIC_NUM)
+        target_composition = scatter(
+            atom_types_one_hot, batch.batch, dim=0, reduce='sum')/batch.num_atoms[:,None]
+        # Compute cross entropy loss for composition.
+        loss = self.mse_composition(pred_composition, target_composition)
+        return loss.mean()
 
     def latt_loss(
         self,
@@ -977,7 +1010,8 @@ class CHGGen(BaseModule):
             batch (Batch): batched data.
         
         Returns:
-            loss (Tensor): Mean squared error for lattices in Cartesian space.
+            loss (Tensor): Mean squared error for lattices in Niggli reduced 
+                but not scaled space.
         """
         target_latt_diff = batch.reduced_lattices - noisy_latt
         target_latt_diff = target_latt_diff / sigmas_per_atom[:, None]**2

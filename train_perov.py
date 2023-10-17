@@ -2,13 +2,11 @@ from pathlib import Path
 import pickle
 import torch
 import os
-from chggen.common.data_utils import get_scaler_from_data_list
+from chggen.common.data_utils import get_scaler_from_data_list, get_scaler
 from chggen.pl_data.dataset import CHGNetDataset
 from chggen.pl_data.datamodule import CrystDataModule
 from chggen.pl_modules.model import CHGGen
-from torch.utils.data import DataLoader, Dataset
-from torch.utils.data.sampler import SubsetRandomSampler
-from torch_geometric.data import Batch
+from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 
@@ -35,31 +33,31 @@ def mkdir(path: str):
         print("Folder exists")
     return path
 
-train_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv', # train.csv
+train_dataset = CHGNetDataset(path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/test_zpc.csv', # train.csv
 name = 'train_perov',
 prop_list = ['heat_all'],
 )
 
-val_dataset = CHGNetDataset(path= '/home/zhongpc/chggen/data/perov_5/test_zpc.csv', # val.csv
+val_dataset = CHGNetDataset(path= '/home/xzdai/ceder_group/material_dircovery/chggen_old/data/perov_5/test_zpc.csv', # val.csv
 name = 'val_perov',
 prop_list = ['heat_all'],
 )
 
 ### test the lattice scaler ##
 
-def get_scaler(dataset, use_prop_scaler = False, 
-               scaler_path = None):
-    # Load once to compute property scaler
-    if scaler_path is None:
-        lattice_scaler = get_scaler_from_data_list(
-            dataset.cached_data,
-            key='scaled_lattice')
-        if use_prop_scaler:
-            NotImplementedError("Not implemented the multi prop scaler yet.")
-    else:
-        lattice_scaler = torch.load(
-            Path(scaler_path) / 'lattice_scaler.pt')
-    return lattice_scaler
+# def get_scaler(dataset, use_prop_scaler = False, 
+#                scaler_path = None):
+#     # Load once to compute property scaler
+#     if scaler_path is None:
+#         lattice_scaler = get_scaler_from_data_list(
+#             dataset.cached_data,
+#             key='scaled_lattice')
+#         if use_prop_scaler:
+#             NotImplementedError("Not implemented the multi prop scaler yet.")
+#     else:
+#         lattice_scaler = torch.load(
+#             Path(scaler_path) / 'lattice_scaler.pt')
+#     return lattice_scaler
 
 
 def collate_graphs(batch_data: list):

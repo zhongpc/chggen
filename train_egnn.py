@@ -12,22 +12,9 @@ from chggen.pl_modules.model_egnn import CHGGen
 
 
 
-# import warnings
-# warnings.simplefilter(action='ignore', category=Warning)
-# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-
-# Functions.
-def mkdir(path: str) -> None:
-    """Make directory if folder not exist.
-
-    Args:
-        path (str): directory name
-    """
-    if os.path.exists(path):
-        print("Folder exists")
-    else:
-        os.makedirs(path)
-    return None
+import warnings
+warnings.simplefilter(action='ignore', category=Warning)
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 # Dataset.
 train_dataset = CHGNetDataset(
@@ -60,8 +47,8 @@ model_hparams = {'latent_dim': 64, 'hidden_dim': 128,
                 'sigma_F_begin': 0.5, 'sigma_F_end': 0.005, 
                 'sigma_L_begin': 1.5, 'sigma_L_end': 0.015, 
                 'type_sigma_begin': 5.0, 'type_sigma_end': 0.01,
-                'max_atoms': 10, # should be larger than the training set.
-                'num_noise_level': 50, 
+                'max_atoms': 10,        # should be larger than the training set.
+                'num_noise_level': 10, 
                 'lattice_scale_method': 'scale_length', 
                 'cost_natom': 1.0, 'cost_latt': 10.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 1.0,
                 'beta': 0.01,
@@ -77,7 +64,7 @@ chggen = CHGGen(
 checkpoint_callback = ModelCheckpoint(
     dirpath= './test_models/perov/',
     filename='{epoch}',       # Save the checkpoint after every epoch
-    save_top_k=-1,            # Set to -1 to save all checkpoints
+    save_top_k=1,            # Set to -1 to save all checkpoints
     save_last=True,           # Save the last model too, useful for resuming
     every_n_train_steps=100,  # Save every epoch (assuming you're validating every epoch)
     verbose=True              # Print save messages for debugging
@@ -86,17 +73,12 @@ checkpoint_callback = ModelCheckpoint(
 trainer = pl.Trainer(
     accelerator = "gpu", 
     devices = [0],
-    max_epochs = 30,
-    callbacks = [checkpoint_callback, TQDMProgressBar(refresh_rate = -1)],
+    max_epochs = 10,
+    callbacks = [checkpoint_callback, TQDMProgressBar(refresh_rate = 1)],
     #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training                    
 )
 
 trainer.fit(model = chggen, datamodule = datamodule)
-
-mkdir("./test_models/perov/")
 trainer.save_checkpoint("./test_models/perov/trainer_perov.ckpt")
-
-with open('./test_models/chggen_perov.pk', 'wb') as fp:
-    pickle.dump(chggen, fp)
 
 print("Done")
