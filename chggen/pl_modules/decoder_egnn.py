@@ -146,7 +146,7 @@ class E_GCL(nn.Module):
             edge_attr (Tensor): edge attribute.
         
         Returns:
-            out (Tensor): next layer edge attribute.
+            out (Tensor): message passing to nodes.
         """
         if edge_attr is None:   # Not used
             out = torch.cat([source, target, l_feat, ft], dim=1)
@@ -392,8 +392,10 @@ class EGNNDecoder(nn.Module):
             in_node_nf=MAX_ATOMIC_NUM,    
             hidden_nf=32,
             in_edge_nf=0,
-            ft_basis=10,
+            ft_basis=256,
             x_dim=3,
+            act_fn=nn.ReLU(),
+            attention = True,
         )
         self.num_noise_level = num_noise_level
 

@@ -5,21 +5,26 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 from p_tqdm import p_umap
+from tqdm import tqdm
 
 import pandas as pd
 import numpy as np
+from sklearn.metrics import (
+    accuracy_score, 
+    recall_score, 
+    precision_score,
+)
+from scipy.interpolate import interp1d
 import torch
+from torch_geometric.data import DataLoader
 
 from pymatgen.core.structure import Structure
 from pymatgen.core.lattice import Lattice
 from pymatgen.analysis.graphs import StructureGraph
 from pymatgen.analysis import local_env
 
-from sklearn.metrics import (
-    accuracy_score, 
-    recall_score, 
-    precision_score,
-)
+from chggen.common.operations import PModulo
+from chggen.pl_modules.wrapped_normal_distribution import wND
 
 
 
@@ -671,6 +676,57 @@ def get_scaler(dataset = None, use_prop_scaler = False, scaler_path = None):
             Path(scaler_path) / 'lattice_scaler.pt')
     return lattice_scaler
 
+def frac_score_norms_interp(
+    dataloader: DataLoader, sigmas: torch.Tensor, 
+) -> torch.Tensor:
+    """Get the normalization factor for fractional coordinate denoising.
+    
+    Mathematics:
+        N(sigma) = E ||  grad_Ft(log(q(Ft|F0))) ||_2^2
+    
+    Args:
+        dataset (CHGNetDataset): dataset for training.
+        sigmas (Tensor): noise level for each sample.
+    
+    Returns:
+        frac_score_norms_interp (interp1d): interpolation function for 
+            the normalization factor.
+    """
+    pmodulo = PModulo()
+    wnd = wND(n=10)
+    target_frac_score_norms = []
+    for i, noise_level in enumerate(tqdm(sigmas)):
+        temp_frac_score_norms = []
+        for batch in dataloader:
+            sigmas_per_atom = noise_level[None].repeat_interleave(batch.num_atoms.sum(), dim=0)
+            normal_noises = torch.randn_like(batch.frac_coords)
+            noises_per_atom = normal_noises * sigmas_per_atom[:, None]
+            noisy_coords =  pmodulo.to(sigmas.device)(batch.frac_coords + noises_per_atom)
+            target_frac_score = wnd.to(sigmas.device).log_grad(
+                noisy_coords, 
+                mu=batch.frac_coords, 
+                sigma=sigmas_per_atom[:,None].repeat_interleave(3, dim=-1),
+            )
+            temp_frac_score_norms.append(target_frac_score)
+        temp_frac_score_norms = torch.cat(temp_frac_score_norms, dim=0)
+        temp_frac_score_norms = torch.sqrt((temp_frac_score_norms**2).sum(dim=-1).mean(dim=0))
+        target_frac_score_norms.append(temp_frac_score_norms)
+    target_frac_score_norms = torch.tensor(target_frac_score_norms)
+    
+    # Interpolate the normalization factor for each noise level.
+    frac_score_norms = interp1d(
+        sigmas, target_frac_score_norms, kind='cubic', fill_value='extrapolate',
+    )
+    return frac_score_norms
+
+def get_exp_sigmas(
+    sigma_begin: float, sigma_end: float, num_noise_level: int, 
+) -> torch.Tensor:
+    """Get a list of sigma values for the Gaussian noise in exponential trend."""
+    sigmas = torch.tensor(
+        np.logspace(np.log10(sigma_begin), np.log10(sigma_end), num_noise_level), dtype=torch.float32,
+    )
+    return sigmas
 
 def preprocess(input_file, num_workers, niggli, primitive, graph_method,
                prop_list):

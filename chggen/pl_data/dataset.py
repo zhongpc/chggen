@@ -145,6 +145,7 @@ class CHGNetDataset(Dataset):
         lengths = data_dict['lengths']
         angles = data_dict['angles']
         num_atoms = data_dict['num_atoms']
+        edge_index = [(i, j) for i in range(len(atom_types)) for j in range(len(atom_types)) if i != j]
 
         # atom_coords are fractional coordinates
         # edge_index is incremented during batching
@@ -152,7 +153,7 @@ class CHGNetDataset(Dataset):
         data = Data(
             x=torch.LongTensor(atom_types),
             crys_graph=crys_graph,
-            edge_index=torch.LongTensor(crys_graph.atom_graph).T,
+            edge_index=torch.LongTensor(edge_index).T,       # edge index for fully connected graph
             lattices=torch.Tensor(lattice).view(1, -1),
             reduced_lattices=torch.Tensor(reduced_lattice).view(1, -1),
             frac_coords=torch.Tensor(frac_coords),
