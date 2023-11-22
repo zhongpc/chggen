@@ -64,7 +64,7 @@ class CHGGen(BaseModule):
                                  'beta': 0.01,
                                  'teacher_forcing_lattice': True,
                                  'teacher_forcing_max_epoch': 1000,
-                                 'decoder': 'gemnet'},
+                                 'decoder': 'nequip'},
                  lattice_scaler = None,
                  **kwargs) -> None:
         super().__init__()
@@ -72,17 +72,8 @@ class CHGGen(BaseModule):
         self.save_hyperparameters(OmegaConf.create(hparams_dict))
         self.lattice_scaler = lattice_scaler
 
-        if self.hparams.load_pretrain:
-            self.encoder = CHGNet_encoder().load()
-            self.encoder.return_crys_feature = True
-            for param in self.encoder.parameters():
-                param.requires_grad = False
+        self.encoder = CHGNet_encoder(return_crystal_feas = True)
 
-        else:
-            self.encoder = CHGNet_encoder()
-            self.encoder.return_crys_feature = True
-            for param in self.encoder.parameters():
-                param.requires_grad = False
 
         if self.hparams.decoder == 'nequip':
             self.decoder = NequipDecoder()
@@ -92,14 +83,20 @@ class CHGGen(BaseModule):
                 latent_dim= self.hparams.latent_dim,
             )
 
-        self.fc_mu = nn.Linear(self.hparams.latent_dim,
-                               self.hparams.latent_dim)
-        self.fc_var = nn.Linear(self.hparams.latent_dim,
-                                self.hparams.latent_dim)
+        # self.fc_mu = nn.Linear(self.hparams.latent_dim,
+        #                        self.hparams.latent_dim)
+        # self.fc_var = nn.Linear(self.hparams.latent_dim,
+        #                         self.hparams.latent_dim)
         
-        ## TODO: add the projection layer to VAE
-        self.fc_latent_proj = build_mlp(64, self.hparams.hidden_dim,
+        self.fc_mu = build_mlp(64, self.hparams.hidden_dim,
                                       self.hparams.fc_num_layers, self.hparams.latent_dim, use_layernorm= True)
+        self.fc_var = build_mlp(64, self.hparams.hidden_dim,
+                                      self.hparams.fc_num_layers, self.hparams.latent_dim, use_layernorm= True)
+
+
+        ## TODO: add the projection layer to VAE
+        # self.fc_latent_proj = build_mlp(64, self.hparams.hidden_dim,
+        #                               self.hparams.fc_num_layers, self.hparams.latent_dim, use_layernorm= True)
 
         self.fc_num_atoms = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
                                       self.hparams.fc_num_layers, self.hparams.max_atoms+1)
@@ -151,8 +148,8 @@ class CHGGen(BaseModule):
         encode crystal structures to latents.
         """
         prediction = self.encoder(batch) # prediction returned from CHGNet
-        crystal_fea = prediction['crystal_fea']
-        latent_fea = self.fc_latent_proj(crystal_fea)
+        latent_fea = prediction['crystal_fea']
+        # latent_fea = self.fc_latent_proj(crystal_fea)
 
         mu = self.fc_mu(latent_fea)
         log_var = self.fc_var(latent_fea)
@@ -215,7 +212,7 @@ class CHGGen(BaseModule):
             cur_atom_types = gt_atom_types
 
         # init coords.
-        cur_frac_coords = torch.rand((num_atoms.sum(), 3), device=z.device)
+        cur_frac_coords_init = torch.rand((num_atoms.sum(), 3), device=z.device)
 
         # annealed langevin dynamics.
         for sigma in tqdm(self.sigmas, total=self.sigmas.size(0), disable=ld_kwargs.disable_bar):
@@ -268,7 +265,7 @@ class CHGGen(BaseModule):
 
     def compute_grad(self, batched_graph, classifier, ld_kwargs):
         # g = batched_graph
-        prediction = self.encoder._compute( batched_graph,
+        prediction = self.encoder.model._compute( batched_graph,
                                             compute_force = ld_kwargs.compute_force,
                                             return_crystal_feas= True,
                                             )
@@ -350,15 +347,17 @@ class CHGGen(BaseModule):
 
                 structure_list = self.get_pymatgen_structure(lengths, angles, num_atoms, cur_frac_coords, cur_atom_types)
         
-                for s_gen in structure_list:
-                    print(s_gen.composition.reduced_formula)
+                # for s_gen in structure_list:
+                #     print(s_gen.composition.reduced_formula)
+
+                # print("*"*50)
                     
                 crystal_graph_list = self.get_crystal_graph(structure_list)
 
                 batched_graph = BatchedGraph.from_graphs(
                                     crystal_graph_list,
-                                    bond_basis_expansion=self.encoder.bond_basis_expansion,
-                                    angle_basis_expansion=self.encoder.angle_basis_expansion,
+                                    bond_basis_expansion=self.encoder.model.bond_basis_expansion,
+                                    angle_basis_expansion=self.encoder.model.angle_basis_expansion,
                                     compute_stress= False,
                                 )
                 

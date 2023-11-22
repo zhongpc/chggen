@@ -20,7 +20,7 @@ from chgnet.graph.converter import CrystalGraphConverter
 
 
 crys_converter = CrystalGraphConverter(
-    atom_graph_cutoff = 5, bond_graph_cutoff = 3
+    atom_graph_cutoff = 6, bond_graph_cutoff = 3
 )
 
 def process_one(
@@ -33,11 +33,13 @@ def process_one(
     crystal_str = row['cif']                    # cif file
     structure = Structure.from_str(crystal_str, fmt = 'cif')
 
-    try:
-        crys_graph = crys_converter(structure)
-    except:
-        print("Crystal graph construction failed in CHGNet. Check the process_csv.")
-        return None
+    crys_graph = crys_converter(structure)
+
+    # try:
+    #     crys_graph = crys_converter(structure)
+    # except:
+    #     print("Crystal graph construction failed in CHGNet. Check the process_csv.")
+    #     return None
 
     properties = {k: row[k] for k in prop_list if k in row.keys()}
     result_dict = {
@@ -49,6 +51,7 @@ def process_one(
         'lengths': np.array(structure.lattice.lengths),
         'angles': np.array(structure.lattice.angles),
         'num_atoms': structure.num_sites,
+        'atom_volume': structure.volume / structure.num_sites,
         'crys_graph': crys_graph,
     }
     result_dict.update(properties)
@@ -145,6 +148,8 @@ class CHGNetDataset(Dataset):
         lengths = data_dict['lengths']
         angles = data_dict['angles']
         num_atoms = data_dict['num_atoms']
+        atom_volume = data_dict['atom_volume'] 
+
         edge_index = [(i, j) for i in range(len(atom_types)) for j in range(len(atom_types)) if i != j]
 
         # atom_coords are fractional coordinates
@@ -161,6 +166,7 @@ class CHGNetDataset(Dataset):
             lengths = torch.Tensor(lengths).view(1, -1),
             angles = torch.Tensor(angles).view(1, -1),
             num_atoms = num_atoms,
+            atom_volume = torch.Tensor([atom_volume]).view(1, -1),
             properties = torch.Tensor(prop_list).view(1, -1),
         )
         return data

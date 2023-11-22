@@ -9,7 +9,7 @@ from pymatgen.core import Structure, Lattice, Element
 
 
 from chggen.pl_data.dataset import CHGNetDataset
-from chggen.pl_modules.model import CHGGen
+from chggen.pl_modules.model_volume import CHGGen
 from chggen.common.data_utils import get_scaler_from_data_list, get_scaler
 
 

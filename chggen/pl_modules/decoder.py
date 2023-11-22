@@ -158,11 +158,12 @@ class NequipDecoder(nn.Module):
         )
 
         pred_cart_coord_diff, pred_atom_types = self.nequip(data)
+
+        del data
+        torch.cuda.empty_cache()
         
         return pred_cart_coord_diff, pred_atom_types
 
-
-class NequipLatticeDecoder(nn.Module):
     """Decoder with nequip """
 
     def __init__(

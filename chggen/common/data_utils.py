@@ -274,10 +274,12 @@ def cart_to_frac_coords(
     lattice = lattice_params_to_matrix_torch(lengths, angles)
     # use pinv in case the predicted lattice is not rank 3
     inv_lattice = torch.linalg.pinv(lattice)
+    # inv_lattice = lattice
     inv_lattice_nodes = torch.repeat_interleave(inv_lattice, num_atoms, dim=0)
     frac_coords = torch.einsum('bi,bij->bj', cart_coords, inv_lattice_nodes)
-    return (frac_coords % 1.)
 
+    # frac_coords = frac_coords % 1.
+    return (frac_coords % 1.)
 
 def get_pbc_distances(
     coords,

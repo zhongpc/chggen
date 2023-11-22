@@ -9,6 +9,8 @@ import torch
 from pymatgen.core import Structure
 from torch import Tensor, nn
 
+from chgnet.model import CHGNet
+
 from chgnet.graph import CrystalGraph, CrystalGraphConverter
 from chgnet.graph.crystalgraph import datatype
 from chgnet.model.composition_model import AtomRef
@@ -27,6 +29,31 @@ if TYPE_CHECKING:
 
 
 class CHGNet_encoder(nn.Module):
+    def __init__(self, model_path = None, return_crystal_feas = True):
+        super().__init__()
+        self.return_crystal_feas = return_crystal_feas
+
+        if model_path is None:
+            self.model = CHGNet().load()
+        else:
+            self.model = CHGNet.from_file(model_path)
+
+        self.graph_converter = self.model.graph_converter
+
+    def forward(self,
+            graphs: Sequence[CrystalGraph],
+            task: PredTask = "e",
+            return_atom_feas: bool = False,
+            return_crystal_feas: bool = True,
+            ):
+        prediction = self.model(graphs, task, 
+                                return_site_energies = False,
+                                return_atom_feas = False,
+                                return_crystal_feas = self.return_crystal_feas) # True for crystal feature
+        
+        return prediction
+
+class CHGNet_encoder_old(nn.Module):
     """Crystal Hamiltonian Graph neural Network
     A model that takes in a crystal graph and output energy, force, magmom, stress.
     """

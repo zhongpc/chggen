@@ -1,6 +1,7 @@
 # Ignore all .log files
 *cpython*
 *.log
+*.pyc
 
 # Ignore all files in the build directory
 chggen.egg-info/
