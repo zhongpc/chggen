@@ -4,8 +4,8 @@ import torch.nn as nn
 from e3nn       import o3
 from e3nn.nn    import Gate
 
-from nequip.e3nn_nequip_interaction import Interaction, Interaction_lattice
-from ceder_group.material_dircovery.chggen.nequip.radial_embedding_table import InitialEmbedding
+from .e3nn_nequip_interaction import Interaction
+from .radial_embedding_table import InitialEmbedding
 from chggen.common.data_utils import get_pbc_distances, frac_to_cart_coords, cart_to_frac_coords, radius_graph_pbc
 from torch_geometric.data import Data
 
@@ -20,7 +20,6 @@ def tp_path_exists(irreps_in1, irreps_in2, ir_out):
             if ir_out in ir1 * ir2:
                 return True
     return False
-
 
 class Compose(nn.Module):
     def __init__(self, first, second):
@@ -62,8 +61,7 @@ class NequIP(nn.Module):
         irreps_node_z  = '8x0e',
         irreps_hidden  = '64x0e + 32x1e + 32x2e',
         irreps_edge    = '1x0e + 1x1e + 1x2e',
-        irreps_out     = '1x1e',
-        irreps_type    = '100x0e',
+        irreps_out     = '1x0e',
         num_convs      = 3,
         radial_neurons = [16, 64],
         num_neighbors  = 12,
@@ -74,7 +72,6 @@ class NequIP(nn.Module):
         self.irreps_node_z  = o3.Irreps(irreps_node_z)
         self.irreps_hidden  = o3.Irreps(irreps_hidden)
         self.irreps_out     = o3.Irreps(irreps_out)
-        self.irreps_type    = o3.Irreps(irreps_type)
         self.irreps_edge    = o3.Irreps(irreps_edge)
         self.num_convs      = num_convs
 
@@ -82,7 +79,8 @@ class NequIP(nn.Module):
         act_gates   = {1: torch.sigmoid, -1: torch.tanh}
 
         irreps = self.irreps_node_x
-        self.interactions = nn.ModuleList()
+        self.interactions_period = nn.ModuleList()
+        self.interactions_group = nn.ModuleList()
         for _ in range(num_convs):
             irreps_scalars = o3.Irreps([(m, ir) for m, ir in self.irreps_hidden if ir.l == 0 and tp_path_exists(irreps, self.irreps_edge, ir)])
             irreps_gated   = o3.Irreps([(m, ir) for m, ir in self.irreps_hidden if ir.l > 0  and tp_path_exists(irreps, self.irreps_edge, ir)])
@@ -98,54 +96,73 @@ class NequIP(nn.Module):
                 ir = None
             irreps_gates = o3.Irreps([(mul, ir) for mul, _ in irreps_gated]).simplify()
 
-            gate = Gate(
+            gate_period = Gate(
                 irreps_scalars, [act_scalars[ir.p] for _, ir in irreps_scalars],  # scalar
                 irreps_gates,   [act_gates[ir.p]   for _, ir in irreps_gates],  # gates (scalars)
                 irreps_gated  # gated tensors
             )
 
-            conv = Interaction(
+            gate_group = Gate(
+                irreps_scalars, [act_scalars[ir.p] for _, ir in irreps_scalars],  # scalar
+                irreps_gates,   [act_gates[ir.p]   for _, ir in irreps_gates],  # gates (scalars)
+                irreps_gated  # gated tensors
+            )
+
+            conv_period = Interaction(
                 irreps_in      = irreps,
                 irreps_node    = self.irreps_node_z,
                 irreps_edge    = self.irreps_edge,
-                irreps_out     = gate.irreps_in,
+                irreps_out     = gate_period.irreps_in,
                 radial_neurons = radial_neurons,
                 num_neighbors  = num_neighbors,   # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
             )
-            irreps = gate.irreps_out
-            self.interactions.append(Compose(conv, gate))
-
+            
+            conv_group = Interaction(
+                irreps_in      = irreps,
+                irreps_node    = self.irreps_node_z,
+                irreps_edge    = self.irreps_edge,
+                irreps_out     = gate_group.irreps_in,
+                radial_neurons = radial_neurons,
+                num_neighbors  = num_neighbors,   # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
+            )
+            
+            irreps = gate_period.irreps_out
+            
+            self.interactions_period.append(Compose(conv_period, gate_period))
+            self.interactions_group.append(Compose(conv_group, gate_group))
+            
         self.out = o3.FullyConnectedTensorProduct(
             irreps_in1 = irreps,
             irreps_in2 = self.irreps_node_z,
             irreps_out = self.irreps_out,
         )
 
-        self.out_type = o3.FullyConnectedTensorProduct(
-            irreps_in1 = irreps,
-            irreps_in2 = self.irreps_node_z,
-            irreps_out = self.irreps_type,
-        )
-
     def forward(self, data):
         # Embedding
         data = self.init_embed(data)
         edge_index, edge_attr = data.edge_index, data.edge_attr
-        h_node_x, h_node_z, h_edge = data.h_node_x, data.h_node_z, data.h_edge
-
+        h_node_x_period, h_node_z_period = data.h_node_x_period, data.h_node_z_period
+        h_node_x_group, h_node_z_group = data.h_node_x_group, data.h_node_z_group
+        h_edge = data.h_edge
+        
         # Graph convolutions
         edge_sh = o3.spherical_harmonics(self.irreps_edge, edge_attr, normalize=True, normalization='component')
-        for layer in self.interactions:
-            h_node_x = layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
-
+        for layer_period in self.interactions_period:
+            h_node_x_period = layer_period(h_node_x_period, h_node_z_period, edge_index, edge_sh, h_edge)
+        for layer_group in self.interactions_group:        
+            h_node_x_group = layer_group(h_node_x_group, h_node_z_group, edge_index, edge_sh, h_edge)
+        
+        # Mix the two outputs.
+        h_node_x = h_node_x_period + h_node_x_group
+        h_node_z = h_node_z_period + h_node_z_group
+        
         # Final output layer
-        return self.out(h_node_x, h_node_z), self.out_type(h_node_x, h_node_z)
-
+        return self.out(h_node_x, h_node_z)
 
 
 
 if __name__ == '__main__':
-    nequip_lattice = NequIP_lattice(init_embed     = InitialEmbedding(num_species= 94, cutoff = 6.0, emb_dim= 32),
+    nequip = NequIP(init_embed = InitialEmbedding(num_species= 94, cutoff = 6.0, emb_dim= 32),
                             irreps_node_x  = '32x0e',
                             irreps_node_z  = '32x0e',
                             irreps_hidden  = '32x0e + 16x1e + 8x2e',
@@ -161,10 +178,10 @@ if __name__ == '__main__':
     angles = torch.tensor([90, 90, 90]).view(-1, 3)
     num_atoms = torch.tensor([4])
     
-
     edge_index, to_jimages, num_bonds = radius_graph_pbc(
                         pred_frac_coords, lengths, angles, num_atoms, 6.0, 12,
                         device=num_atoms.device)
+    
     out = get_pbc_distances(
                                 pred_frac_coords,
                                 edge_index,
@@ -187,5 +204,4 @@ if __name__ == '__main__':
             edge_attr = out['distance_vec']
         )
 
-    pred_cart_coord_diff, pred_atom_types = nequip_lattice(data)
-        
+    pred_energy = nequip(data)
