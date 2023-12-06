@@ -7,7 +7,9 @@ import torch
 from torch.nn.functional import one_hot
 
 class PeriodicTable:
-    """Class for periodic table of elements."""
+    """Class for periodic table of elements.
+    Periodic Table information is from https://github.com/qiwsir/DataSet/blob/master/elemanets/elements.csv.
+    """
     
     def __init__(
             self, path: str = 'elements.csv',
