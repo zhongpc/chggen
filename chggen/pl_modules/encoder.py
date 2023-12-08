@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from chgnet import PredTask
 
 
+# New CHGNet_encoder is compatible with CHGNet (0.3.0).
 class CHGNet_encoder(nn.Module):
     def __init__(self, model_path = None, return_crystal_feas = True):
         super().__init__()
@@ -47,7 +48,7 @@ class CHGNet_encoder(nn.Module):
             return_crystal_feas: bool = True,
             ):
         prediction = self.model(graphs, task, 
-                                return_site_energies = False,
+                                # return_site_energies = False,
                                 return_atom_feas = False,
                                 return_crystal_feas = self.return_crystal_feas) # True for crystal feature
         

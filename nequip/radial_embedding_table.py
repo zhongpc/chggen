@@ -11,7 +11,7 @@ from element_dict.element_dict import PeriodicTable
 class InitialEmbedding(nn.Module):
     def __init__(self, num_periods, num_groups, cutoff, emb_dim):
         super().__init__()
-        self.periodic_table = PeriodicTable('/home/xzdai/ceder_group/material_dircovery/chggen/element_dict/elements.csv')
+        self.periodic_table = PeriodicTable('/home/xzdai/ceder_group/material_dircovery/chggen_table/element_dict/elements.csv')
         self.embed_node_x_period = nn.Embedding(num_periods, emb_dim)
         self.embed_node_z_period = nn.Embedding(num_periods, emb_dim)
         self.embed_node_x_group = nn.Embedding(num_groups, emb_dim)
@@ -21,7 +21,7 @@ class InitialEmbedding(nn.Module):
     def forward(self, data):
         # Embed node
         x_period = self.periodic_table.get_property_from_atomic_numbers(data.x, 'period')-1 # index from 0.
-        x_group = self.periodic_table.get_property_from_atomic_numbers(data.x, 'period')-1  # index from 0.
+        x_group = self.periodic_table.get_property_from_atomic_numbers(data.x, 'group')-1  # index from 0.
         
         data.h_node_x_period = self.embed_node_x_period(x_period)
         data.h_node_z_period = self.embed_node_z_period(x_period)

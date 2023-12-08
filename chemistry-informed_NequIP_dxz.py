@@ -18,7 +18,7 @@ if __name__ == '__main__':
                             irreps_node_z  = '32x0e',
                             irreps_hidden  = '32x0e + 16x1e + 8x2e',
                             irreps_edge    = '32x0e + 16x1e + 8x2e',
-                            irreps_out     = '1x0e',
+                            irreps_out     = '1x1e',
                             num_convs      = 3,
                             radial_neurons = [16, 64],
                             num_neighbors  = 12,

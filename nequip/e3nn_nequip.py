@@ -5,7 +5,7 @@ from e3nn       import o3
 from e3nn.nn    import Gate
 
 from nequip.e3nn_nequip_interaction import Interaction, Interaction_lattice
-from ceder_group.material_dircovery.chggen.nequip.radial_embedding_table import InitialEmbedding
+from nequip.radial_embedding_table import InitialEmbedding
 from chggen.common.data_utils import get_pbc_distances, frac_to_cart_coords, cart_to_frac_coords, radius_graph_pbc
 from torch_geometric.data import Data
 

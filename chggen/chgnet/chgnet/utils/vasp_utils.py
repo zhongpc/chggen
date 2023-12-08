@@ -135,7 +135,7 @@ def parse_vasp_dir(
     for ionic_step, mag_step in zip(vasprun_orig.ionic_steps, mag_x_all):
         if (
             check_electronic_convergence
-            and len(ionic_step["electronic_steps"]) > vasprun_orig.parameters["NELM"]
+            and len(ionic_step["electronic_steps"]) >= vasprun_orig.parameters["NELM"]
         ):
             continue
 
@@ -146,6 +146,9 @@ def parse_vasp_dir(
         dataset["magmom"].append([site["tot"] for site in mag_step])
         if "stress" in ionic_step:
             dataset["stress"].append(ionic_step["stress"])
+
+    if dataset["uncorrected_total_energy"] == []:
+        raise Exception(f"No data parsed from {file_root}!")
 
     return dataset
 
@@ -172,6 +175,8 @@ def solve_charge_by_mag(
                     (4.2, 5): 2
                 ))
     """
+    out_structure = structure.copy()
+    out_structure.remove_oxidation_states()
     ox_list = []
     solved_ox = True
     default_ox = default_ox or {"Li": 1, "O": -2}
@@ -180,10 +185,10 @@ def solve_charge_by_mag(
     }
 
     mag = structure.site_properties.get(
-        "final_magmom", structure.site_properties.get("magmom")
+        "magmom", structure.site_properties.get("magmom")
     )
 
-    for idx, site in enumerate(structure):
+    for idx, site in enumerate(out_structure):
         assigned = False
         if site.species_string in ox_ranges:
             for (min_mag, max_mag), mag_ox in ox_ranges[site.species_string].items():
@@ -198,7 +203,9 @@ def solve_charge_by_mag(
             solved_ox = False
 
     if solved_ox:
-        print(ox_list)
-        structure.add_oxidation_state_by_site(ox_list)
-        return structure
+        total_charge = sum(ox_list)
+        print(f"Solvec oxidation state, total charge={total_charge}")
+        out_structure.add_oxidation_state_by_site(ox_list)
+        return out_structure
+    print("Failed to solve oxidation state")
     return None

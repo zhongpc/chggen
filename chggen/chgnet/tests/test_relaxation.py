@@ -19,7 +19,7 @@ structure = Structure.from_file(f"{ROOT}/examples/mp-18767-LiMnO2.cif")
 def test_relaxation(algorithm: Literal["legacy", "fast"]):
     chgnet = CHGNet.load()
     converter = CrystalGraphConverter(
-        atom_graph_cutoff=5, bond_graph_cutoff=3, algorithm=algorithm
+        atom_graph_cutoff=6, bond_graph_cutoff=3, algorithm=algorithm
     )
     assert converter.algorithm == algorithm
 
@@ -37,20 +37,16 @@ def test_relaxation(algorithm: Literal["legacy", "fast"]):
 
     # make sure final structure is more relaxed than initial one
     assert traj.energies[0] > traj.energies[-1]
-    assert traj.energies[-1] == approx(-58.972927)
+    assert traj.energies[-1] == approx(-58.94209, rel=1e-4)
 
 
 no_cuda = mark.skipif(not torch.cuda.is_available(), reason="No CUDA device")
-no_mps = mark.skipif(not hasattr(torch.backends, "mps"), reason="No MPS device")
+no_mps = mark.skipif(not torch.backends.mps.is_available(), reason="No MPS device")
 
 
 @mark.parametrize(
     "use_device", ["cpu", param("cuda", marks=no_cuda), param("mps", marks=no_mps)]
 )
 def test_structure_optimizer_passes_kwargs_to_model(use_device) -> None:
-    try:
-        relaxer = StructOptimizer(use_device=use_device)
-        assert re.match(rf"{use_device}(:\d+)?", relaxer.calculator.device)
-    except NotImplementedError as exc:
-        # TODO: remove try/except once mps is supported
-        assert str(exc) == "'mps' backend is not supported yet"  # noqa: PT017
+    relaxer = StructOptimizer(use_device=use_device)
+    assert re.match(rf"{use_device}(:\d+)?", relaxer.calculator.device)

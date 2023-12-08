@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import collections
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -11,6 +11,8 @@ from torch import Tensor, nn
 from chgnet.model.functions import GatedMLP, find_activation
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from chgnet.graph.crystalgraph import CrystalGraph
 
 
@@ -44,7 +46,8 @@ class CompositionModel(nn.Module):
         """Predict the energy given composition encoding.
 
         Args:
-            composition_feas: batched atom feature matrix [batch_size, total_num_elements].
+            composition_feas: batched atom feature matrix of shape
+                [batch_size, total_num_elements].
 
         Returns:
             prediction associated with each composition [batchsize].
@@ -68,7 +71,7 @@ class CompositionModel(nn.Module):
             assembled batch_graph that contains all information for model.
         """
         composition_feas = []
-        for _graph_idx, graph in enumerate(graphs):
+        for graph in graphs:
             composition_fea = torch.bincount(
                 graph.atomic_number - 1, minlength=self.max_num_elements
             )
@@ -109,7 +112,8 @@ class AtomRef(nn.Module):
         """Predict the energy given composition encoding.
 
         Args:
-            composition_feas: batched atom feature matrix [batch_size, total_num_elements].
+            composition_feas: batched atom feature matrix of shape
+                [batch_size, total_num_elements].
 
         Returns:
             prediction associated with each composition [batchsize].
@@ -171,7 +175,7 @@ class AtomRef(nn.Module):
             assembled batch_graph that contains all information for model.
         """
         composition_feas = []
-        for _graph_idx, graph in enumerate(graphs):
+        for graph in graphs:
             composition_fea = torch.bincount(
                 graph.atomic_number - 1, minlength=self.max_num_elements
             )
@@ -181,11 +185,25 @@ class AtomRef(nn.Module):
             composition_feas.append(composition_fea)
         return torch.stack(composition_feas, dim=0).float()
 
+    def get_site_energies(self, graphs: list[CrystalGraph]):
+        """Predict the site energies given a list of CrystalGraphs.
+
+        Args:
+            graphs (List(CrystalGraph)): a list of Crystal Graph to compute
+
+        Returns:
+            a list of tensors corresponding to site energies of each graph [batchsize].
+        """
+        return [
+            self.fc.state_dict()["weight"][0, graph.atomic_number - 1]
+            for graph in graphs
+        ]
+
     def initialize_from(self, dataset: str):
         """Initialize pre-fitted weights from a dataset."""
         if dataset in ["MPtrj", "MPtrj_e"]:
             self.initialize_from_MPtrj()
-        elif dataset in ["MPF"]:
+        elif dataset == "MPF":
             self.initialize_from_MPF()
         else:
             raise NotImplementedError(f"{dataset=} not supported yet")

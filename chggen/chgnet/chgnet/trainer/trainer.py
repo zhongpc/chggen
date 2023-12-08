@@ -63,8 +63,8 @@ class Trainer:
                 Default = 0.1
             mag_loss_ratio (float): magmom loss ratio in loss function
                 Default = 0.1
-            optimizer (str): optimizer to update model. Can be "Adam", "SGD", "AdamW", "RAdam"
-                Default = 'Adam'
+            optimizer (str): optimizer to update model. Can be "Adam", "SGD", "AdamW",
+                "RAdam". Default = 'Adam'
             scheduler (str): learning rate scheduler. Can be "CosLR", "ExponentialLR",
                 "CosRestartLR". Default = 'CosLR'
             criterion (str): loss function criterion. Can be "MSE", "Huber", "MAE"
@@ -143,16 +143,23 @@ class Trainer:
             self.scheduler = ExponentialLR(self.optimizer, **scheduler_params)
             self.scheduler_type = "exp"
         elif scheduler in ["CosineAnnealingLR", "CosLR", "Cos", "cos"]:
+            scheduler_params = kwargs.pop("scheduler_params", {"decay_fraction": 1e-2})
+            decay_fraction = scheduler_params.pop("decay_fraction")
             self.scheduler = CosineAnnealingLR(
                 self.optimizer,
                 T_max=10 * epochs,  # Maximum number of iterations.
-                eta_min=1e-2 * learning_rate,
+                eta_min=decay_fraction * learning_rate,
             )
             self.scheduler_type = "cos"
-        elif scheduler in ["CosRestartLR"]:
-            scheduler_params = kwargs.pop("scheduler_params", {"T_0": 10, "T_mult": 2})
+        elif scheduler == "CosRestartLR":
+            scheduler_params = kwargs.pop(
+                "scheduler_params", {"decay_fraction": 1e-2, "T_0": 10, "T_mult": 2}
+            )
+            decay_fraction = scheduler_params.pop("decay_fraction")
             self.scheduler = CosineAnnealingWarmRestarts(
-                self.optimizer, eta_min=1e-2 * learning_rate, **scheduler_params
+                self.optimizer,
+                eta_min=decay_fraction * learning_rate,
+                **scheduler_params,
             )
             self.scheduler_type = "cosrestart"
         else:
@@ -177,9 +184,6 @@ class Trainer:
             self.device = use_device
         elif torch.cuda.is_available():
             self.device = "cuda"
-        # mps is disabled until stable version of torch for mps is released
-        # elif torch.backends.mps.is_available():
-        #     self.device = "mps"
         else:
             self.device = "cpu"
         if self.device == "cuda":
@@ -212,7 +216,8 @@ class Trainer:
                 Default = None
             save_dir (str): the dir name to save the trained weights
                 Default = None
-            save_test_result (bool): whether to save the test set prediction in a json file
+            save_test_result (bool): Whether to save the test set prediction in a JSON
+                file. Default = False
             train_composition_model (bool): whether to train the composition model
                 (AtomRef), this is suggested when the fine-tuning dataset has large
                 elemental energy shift from the pretrained CHGNet, which typically comes
@@ -333,13 +338,13 @@ class Trainer:
 
             if idx == 0 or (idx + 1) % self.print_freq == 0:
                 message = (
-                    f"Epoch: [{current_epoch}][{idx + 1}/{len(train_loader)}]\t"
-                    f"Time ({batch_time.avg:.3f})  Data ({data_time.avg:.3f})  "
-                    f"Loss {losses.val:.4f} ({losses.avg:.4f})  MAEs:  "
+                    f"Epoch: [{current_epoch}][{idx + 1}/{len(train_loader)}] | "
+                    f"Time ({batch_time.avg:.3f})({data_time.avg:.3f}) | "
+                    f"Loss {losses.val:.4f}({losses.avg:.4f}) | MAE "
                 )
                 for key in self.targets:
                     message += (
-                        f"{key} {mae_errors[key].val:.3f} ({mae_errors[key].avg:.3f})  "
+                        f"{key} {mae_errors[key].val:.3f}({mae_errors[key].avg:.3f})  "
                     )
                 print(message)
         return {key: round(err.avg, 6) for key, err in mae_errors.items()}
@@ -437,14 +442,15 @@ class Trainer:
             end = time.perf_counter()
 
             if (idx + 1) % self.print_freq == 0:
+                name = "Test" if is_test else "Val"
                 message = (
-                    f"Test: [{idx + 1}/{len(val_loader)}]\t"
-                    f"Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t"
-                    f"Loss {losses.val:.4f} ({losses.avg:.4f})  MAEs:  "
+                    f"{name}: [{idx + 1}/{len(val_loader)}] | "
+                    f"Time ({batch_time.avg:.3f}) | "
+                    f"Loss {losses.val:.4f}({losses.avg:.4f}) | MAE "
                 )
                 for key in self.targets:
                     message += (
-                        f"{key} {mae_errors[key].val:.3f} ({mae_errors[key].avg:.3f})  "
+                        f"{key} {mae_errors[key].val:.3f}({mae_errors[key].avg:.3f})  "
                     )
                 print(message)
 
@@ -466,7 +472,7 @@ class Trainer:
         if self.best_model is None:
             raise RuntimeError("the model needs to be trained first")
         MAE = min(self.training_history["e"]["val"])
-        print(f"Best model has val {MAE = :.4}")
+        print(f"Best model has val {MAE =:.4}")
         return self.best_model
 
     @property
@@ -502,15 +508,11 @@ class Trainer:
             if fname.startswith("epoch"):
                 os.remove(os.path.join(save_dir, fname))
 
-        rounded_mae_e = round(mae_error["e"] * 1000)
-        rounded_mae_f = round(mae_error["f"] * 1000)
-        rounded_mae_s = round(mae_error["s"] * 1000) if "s" in mae_error else "NA"
-        rounded_mae_m = round(mae_error["m"] * 1000) if "m" in mae_error else "NA"
-        filename = os.path.join(
-            save_dir,
-            f"epoch{epoch}_e{rounded_mae_e}f{rounded_mae_f}"
-            f"s{rounded_mae_s}m{rounded_mae_m}.pth.tar",
+        err_str = "_".join(
+            f"{key}{f'{mae_error[key] * 1000:.0f}' if key in mae_error else 'NA'}"
+            for key in "efsm"
         )
+        filename = os.path.join(save_dir, f"epoch{epoch}_{err_str}.pth.tar")
         self.save(filename=filename)
 
         # save the model if it has minimal val energy error or val force error
@@ -521,11 +523,7 @@ class Trainer:
                     os.remove(os.path.join(save_dir, fname))
             shutil.copyfile(
                 filename,
-                os.path.join(
-                    save_dir,
-                    f"bestE_epoch{epoch}_e{rounded_mae_e}f{rounded_mae_f}"
-                    f"s{rounded_mae_s}m{rounded_mae_m}.pth.tar",
-                ),
+                os.path.join(save_dir, f"bestE_epoch{epoch}_{err_str}.pth.tar"),
             )
         if mae_error["f"] == min(self.training_history["f"]["val"]):
             for fname in os.listdir(save_dir):
@@ -533,11 +531,7 @@ class Trainer:
                     os.remove(os.path.join(save_dir, fname))
             shutil.copyfile(
                 filename,
-                os.path.join(
-                    save_dir,
-                    f"bestF_epoch{epoch}_e{rounded_mae_e}f{rounded_mae_f}"
-                    f"s{rounded_mae_s}m{rounded_mae_m}.pth.tar",
-                ),
+                os.path.join(save_dir, f"bestF_epoch{epoch}_{err_str}.pth.tar"),
             )
 
     @classmethod
@@ -611,7 +605,7 @@ class CombinedLoss(nn.Module):
             self.criterion = nn.MSELoss()
         elif criterion in ["MAE", "mae", "l1"]:
             self.criterion = nn.L1Loss()
-        elif criterion in ["Huber"]:
+        elif criterion == "Huber":
             self.criterion = nn.HuberLoss(delta=delta)
         else:
             raise NotImplementedError

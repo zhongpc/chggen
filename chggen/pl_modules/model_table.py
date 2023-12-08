@@ -22,7 +22,9 @@ from chggen.pl_modules.embeddings import MAX_ATOMIC_NUM
 from chggen.pl_modules.embeddings import KHOT_EMBEDDINGS
 
 from chggen.pl_modules.encoder import CHGNet_encoder_old
+from chggen.pl_modules.decoder_table import NequipTableDecoder
 from chggen.pl_modules.decoder import NequipDecoder, GemNetTDecoder
+
 
 from chggen.pl_modules.condition import Classifier
 
@@ -64,7 +66,7 @@ class CHGGen(BaseModule):
                                  'beta': 0.01,
                                  'teacher_forcing_lattice': True,
                                  'teacher_forcing_max_epoch': 1000,
-                                 'decoder': 'nequip'},
+                                 'decoder': 'nequip_table'},
                  lattice_scaler = None,
                  **kwargs) -> None:
         super().__init__()
@@ -77,6 +79,8 @@ class CHGGen(BaseModule):
 
         if self.hparams.decoder == 'nequip':
             self.decoder = NequipDecoder()
+        elif self.hparams.decoder == 'nequip_table':
+            self.decoder = NequipTableDecoder()
         else:
             self.decoder = GemNetTDecoder(
                 hidden_dim= self.hparams.hidden_dim, 
@@ -223,7 +227,7 @@ class CHGGen(BaseModule):
             for step in range(ld_kwargs.n_step_each):
                 noise_cart = torch.randn_like(
                     cur_frac_coords) * torch.sqrt(step_size * 2)
-                pred_cart_coord_diff, pred_atom_types = self.decoder(
+                pred_cart_coord_diff = self.decoder(
                     z, cur_frac_coords, cur_atom_types, num_atoms, lengths, angles)
 
                 cur_cart_coords = frac_to_cart_coords(
@@ -236,8 +240,8 @@ class CHGGen(BaseModule):
                 cur_frac_coords = cart_to_frac_coords(
                     cur_cart_coords, lengths, angles, num_atoms)
 
-                if gt_atom_types is None:
-                    cur_atom_types = torch.argmax(pred_atom_types, dim=1) + 1
+                # if gt_atom_types is None:
+                #     cur_atom_types = torch.argmax(pred_atom_types, dim=1) + 1
 
                 if ld_kwargs.save_traj:
                     all_frac_coords.append(cur_frac_coords)
@@ -265,7 +269,7 @@ class CHGGen(BaseModule):
 
     def compute_grad(self, batched_graph, classifier, ld_kwargs):
         # g = batched_graph
-        prediction = self.encoder.model._compute( batched_graph,
+        prediction = self.encoder._compute( batched_graph,
                                             compute_force = ld_kwargs.compute_force,
                                             return_crystal_feas= True,
                                             )
@@ -340,7 +344,7 @@ class CHGGen(BaseModule):
             for step in range(ld_kwargs.n_step_each):
                 noise_cart = torch.randn_like(
                     cur_frac_coords) * torch.sqrt(step_size * 2)
-                pred_cart_coord_diff, pred_atom_types = self.decoder(
+                pred_cart_coord_diff = self.decoder(
                     z, cur_frac_coords, cur_atom_types, num_atoms, lengths, angles)
                 # add the probability gradient
                 # compute the property via  encoder 
@@ -356,8 +360,8 @@ class CHGGen(BaseModule):
 
                 batched_graph = BatchedGraph.from_graphs(
                                     crystal_graph_list,
-                                    bond_basis_expansion=self.encoder.model.bond_basis_expansion,
-                                    angle_basis_expansion=self.encoder.model.angle_basis_expansion,
+                                    bond_basis_expansion=self.encoder.bond_basis_expansion,
+                                    angle_basis_expansion=self.encoder.angle_basis_expansion,
                                     compute_stress= False,
                                 )
                 
@@ -391,8 +395,8 @@ class CHGGen(BaseModule):
                 cur_frac_coords = cart_to_frac_coords(
                     cur_cart_coords, lengths, angles, num_atoms)
 
-                if gt_atom_types is None:
-                    cur_atom_types = torch.argmax(pred_atom_types, dim=1) + 1
+                # if gt_atom_types is None:
+                #     cur_atom_types = torch.argmax(pred_atom_types, dim=1) + 1
 
                 if ld_kwargs.save_traj:
                     all_frac_coords.append(cur_frac_coords)
@@ -505,7 +509,7 @@ class CHGGen(BaseModule):
         noisy_frac_coords = cart_to_frac_coords(
             cart_coords, pred_lengths, pred_angles, batch.num_atoms)
         # pred_atom_types is the (atomic numer - 1)
-        pred_cart_coord_diff, pred_atom_types = self.decoder(
+        pred_cart_coord_diff  = self.decoder(
             z, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
 
         # compute loss.
@@ -515,8 +519,8 @@ class CHGGen(BaseModule):
             pred_composition_per_atom, batch.atom_types, batch)
         coord_loss = self.coord_loss(
             pred_cart_coord_diff, noisy_frac_coords, used_sigmas_per_atom, batch)
-        type_loss = self.type_loss(pred_atom_types, batch.atom_types,
-                                   used_type_sigmas_per_atom, batch)
+        # type_loss = self.type_loss(pred_atom_types, batch.atom_types,
+        #                            used_type_sigmas_per_atom, batch)
 
         kld_loss = self.kld_loss(mu, log_var)
 
@@ -530,7 +534,7 @@ class CHGGen(BaseModule):
             'lattice_loss': lattice_loss,
             'composition_loss': composition_loss,
             'coord_loss': coord_loss,
-            'type_loss': type_loss,
+            # 'type_loss': type_loss,
             'kld_loss': kld_loss,
             'property_loss': property_loss,
             'pred_num_atoms': pred_num_atoms,
@@ -538,7 +542,7 @@ class CHGGen(BaseModule):
             'pred_lengths': pred_lengths,
             'pred_angles': pred_angles,
             'pred_cart_coord_diff': pred_cart_coord_diff,
-            'pred_atom_types': pred_atom_types,
+            # 'pred_atom_types': pred_atom_types,
             'pred_composition_per_atom': pred_composition_per_atom,
             'target_frac_coords': batch.frac_coords,
             'target_atom_types': batch.atom_types,
@@ -720,7 +724,7 @@ class CHGGen(BaseModule):
         num_atom_loss = outputs['num_atom_loss']
         lattice_loss = outputs['lattice_loss']
         coord_loss = outputs['coord_loss']
-        type_loss = outputs['type_loss']
+        # type_loss = outputs['type_loss']
         kld_loss = outputs['kld_loss']
         composition_loss = outputs['composition_loss']
         property_loss = outputs['property_loss']
@@ -729,7 +733,7 @@ class CHGGen(BaseModule):
             self.hparams.cost_natom * num_atom_loss +
             self.hparams.cost_lattice * lattice_loss +
             self.hparams.cost_coord * coord_loss +
-            self.hparams.cost_type * type_loss +
+            # self.hparams.cost_type * type_loss +
             self.hparams.beta * kld_loss +
             self.hparams.cost_composition * composition_loss +
             self.hparams.cost_property * property_loss)
@@ -739,7 +743,7 @@ class CHGGen(BaseModule):
             f'{prefix}_natom_loss': num_atom_loss,
             f'{prefix}_lattice_loss': lattice_loss,
             f'{prefix}_coord_loss': coord_loss,
-            f'{prefix}_type_loss': type_loss,
+            # f'{prefix}_type_loss': type_loss,
             f'{prefix}_kld_loss': kld_loss,
             f'{prefix}_composition_loss': composition_loss,
         }
@@ -747,8 +751,9 @@ class CHGGen(BaseModule):
         if prefix != 'train':
             # validation/test loss only has coord and type
             loss = (
-                self.hparams.cost_coord * coord_loss +
-                self.hparams.cost_type * type_loss)
+                self.hparams.cost_coord * coord_loss
+                # self.hparams.cost_type * type_loss
+                )
 
             # evaluate num_atom prediction.
             pred_num_atoms = outputs['pred_num_atoms'].argmax(dim=-1)
@@ -774,12 +779,12 @@ class CHGGen(BaseModule):
             volumes_mard = mard(true_volumes, pred_volumes)
 
             # evaluate atom type prediction.
-            pred_atom_types = outputs['pred_atom_types']
-            target_atom_types = outputs['target_atom_types']
-            type_accuracy = pred_atom_types.argmax(
-                dim=-1) == (target_atom_types - 1)
-            type_accuracy = scatter(type_accuracy.float(
-            ), batch.batch, dim=0, reduce='mean').mean()
+            # pred_atom_types = outputs['pred_atom_types']
+            # target_atom_types = outputs['target_atom_types']
+            # type_accuracy = pred_atom_types.argmax(
+                # dim=-1) == (target_atom_types - 1)
+            # type_accuracy = scatter(type_accuracy.float(
+            # ), batch.batch, dim=0, reduce='mean').mean()
 
             log_dict.update({
                 f'{prefix}_loss': loss,
@@ -788,7 +793,7 @@ class CHGGen(BaseModule):
                 f'{prefix}_lengths_mard': lengths_mard,
                 f'{prefix}_angles_mae': angles_mae,
                 f'{prefix}_volumes_mard': volumes_mard,
-                f'{prefix}_type_accuracy': type_accuracy,
+                # f'{prefix}_type_accuracy': type_accuracy,
             })
 
         else:
@@ -796,7 +801,7 @@ class CHGGen(BaseModule):
             self.log(f'{prefix}_natom_loss', num_atom_loss, on_step=True, on_epoch=True, prog_bar=True)
             self.log(f'{prefix}_lattice_loss', lattice_loss, on_step=True, on_epoch=True, prog_bar=True)
             self.log(f'{prefix}_coord_loss', coord_loss, on_step=True, on_epoch=True, prog_bar=True)
-            self.log(f'{prefix}_type_loss', type_loss, on_step=True, on_epoch=True, prog_bar=True)
+            # self.log(f'{prefix}_type_loss', type_loss, on_step=True, on_epoch=True, prog_bar=True)
             self.log(f'{prefix}_kld_loss', kld_loss, on_step=True, on_epoch=True, prog_bar=True)
             self.log(f'{prefix}_composition_loss', composition_loss, on_step=True, on_epoch=True, prog_bar=True)
            

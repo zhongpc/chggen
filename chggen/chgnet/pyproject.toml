@@ -1,0 +1,108 @@
+[build-system]
+requires = ["Cython", "setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chgnet"
+version = "0.3.2"
+description = "Pretrained Universal Neural Network Potential for Charge-informed Atomistic Modeling"
+authors = [{ name = "Bowen Deng", email = "bowendeng@berkeley.edu" }]
+requires-python = ">=3.9"
+readme = "README.md"
+license = { text = "Modified BSD" }
+dependencies = [
+    "ase>=3.22.0",
+    "cython>=0.29.26",
+    "numpy>=1.21.6",
+    "nvidia-ml-py3>=7.352.0",
+    "pymatgen>=2023.10.11",
+    "torch>=1.11.0",
+]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-cov"]
+# needed to run interactive example notebooks
+examples = ["crystal-toolkit", "pandas"]
+docs = ["lazydocs"]
+
+[project.urls]
+Source = "https://github.com/CederGroupHub/chgnet"
+Package = "https://pypi.org/project/chgnet"
+
+[tool.setuptools.packages]
+find = { include = ["chgnet*"], exclude = ["tests", "tests*"] }
+
+[tool.setuptools.package-data]
+"chgnet" = ["*.json"]
+"chgnet.pretrained" = ["*", "**/*"]
+
+[tool.ruff]
+target-version = "py39"
+include = ["**/pyproject.toml", "*.ipynb", "*.py", "*.pyi"]
+select = [
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "D",    # pydocstyle
+    "E",    # pycodestyle error
+    "EXE",  # flake8-executable
+    "F",    # pyflakes
+    "FA",   # flake8-future-annotations
+    "FLY",  # flynt
+    "I",    # isort
+    "ICN",  # flake8-import-conventions
+    "ISC",  # flake8-implicit-str-concat
+    "PD",   # pandas-vet
+    "PERF", # perflint
+    "PIE",  # flake8-pie
+    "PL",   # pylint
+    "PT",   # flake8-pytest-style
+    "PYI",  # flakes8-pyi
+    "Q",    # flake8-quotes
+    "RET",  # flake8-return
+    "RSE",  # flake8-raise
+    "RUF",  # Ruff-specific rules
+    "SIM",  # flake8-simplify
+    "SLOT", # flakes8-slot
+    "TCH",  # flake8-type-checking
+    "TID",  # tidy imports
+    "TID",  # flake8-tidy-imports
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warning
+    "YTT",  # flake8-2020
+]
+ignore = [
+    "B019",    # Use of functools.lru_cache on methods can lead to memory leaks
+    "C408",    # unnecessary-collection-call
+    "D100",    # Missing docstring in public module
+    "D104",    # Missing docstring in public package
+    "D205",    # 1 blank line required between summary line and description
+    "PLR",     # pylint refactor
+    "PLW2901", # Outer for loop variable overwritten by inner assignment target
+    "PT006",   # pytest-parametrize-names-wrong-type
+    "PT011",   # pytest-raises-too-broad
+    "PT013",   # pytest-incorrect-pytest-import
+    "PT019",   # pytest-fixture-param-without-value
+]
+pydocstyle.convention = "google"
+isort.required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.per-file-ignores]
+"tests/*" = ["D103"]
+"examples/*" = ["E402", "I002"] # E402 Module level import not at top of file
+
+[tool.coverage.run]
+source = ["chgnet"]
+
+[tool.coverage.report]
+omit = ["tests/*"]

@@ -14,6 +14,7 @@ from ase.constraints import ExpCellFilter
 from ase.md.npt import NPT
 from ase.md.nptberendsen import Inhomogeneous_NPTBerendsen, NPTBerendsen
 from ase.md.nvtberendsen import NVTBerendsen
+from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary
 from ase.md.verlet import VelocityVerlet
 from ase.optimize.bfgs import BFGS
 from ase.optimize.bfgslinesearch import BFGSLineSearch
@@ -79,22 +80,29 @@ class CHGNetCalculator(Calculator):
         """
         super().__init__(**kwargs)
 
-        # mps is disabled before stable version of pytorch on apple mps is released
-        if use_device == "mps":
-            raise NotImplementedError("'mps' backend is not supported yet")
-        # elif torch.backends.mps.is_available():
-        #     self.device = 'mps'
-
         # Determine the device to use
-        self.device = use_device or ("cuda" if torch.cuda.is_available() else "cpu")
-        if self.device == "cuda":
-            self.device = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"
+        if use_device == "mps" and torch.backends.mps.is_available():
+            self.device = "mps"
+        else:
+            self.device = use_device or ("cuda" if torch.cuda.is_available() else "cpu")
+            if self.device == "cuda":
+                self.device = f"cuda:{cuda_devices_sorted_by_free_mem()[-1]}"
 
         # Move the model to the specified device
         self.model = (model or CHGNet.load()).to(self.device)
         self.model.graph_converter.set_isolated_atom_response(on_isolated_atoms)
         self.stress_weight = stress_weight
         print(f"CHGNet will run on {self.device}")
+
+    @property
+    def version(self) -> str:
+        """The version of CHGNet."""
+        return self.model.version
+
+    @property
+    def n_params(self) -> int:
+        """The number of parameters in CHGNet."""
+        return self.model.n_params
 
     def calculate(
         self,
@@ -187,6 +195,16 @@ class StructOptimizer:
                 on_isolated_atoms=on_isolated_atoms,
             )
 
+    @property
+    def version(self) -> str:
+        """The version of CHGNet."""
+        return self.calculator.model.version
+
+    @property
+    def n_params(self) -> int:
+        """The number of parameters in CHGNet."""
+        return self.calculator.model.n_params
+
     def relax(
         self,
         atoms: Structure | Atoms,
@@ -225,7 +243,7 @@ class StructOptimizer:
                 A dictionary with 'final_structure' and 'trajectory'.
         """
         if isinstance(atoms, Structure):
-            atoms = AseAtomsAdaptor.get_atoms(atoms)
+            atoms = atoms.to_ase_atoms()
 
         atoms.calc = self.calculator  # assign model used to predict forces
 
@@ -358,6 +376,7 @@ class MolecularDynamics:
         ensemble: str = "nvt",
         thermostat: str = "Berendsen_inhomogeneous",
         temperature: int = 300,
+        starting_temperature: int | None = None,
         timestep: float = 2.0,
         pressure: float = 1.01325e-4,
         taut: float | None = None,
@@ -382,9 +401,13 @@ class MolecularDynamics:
                 Default = "nvt"
             thermostat (str): Thermostat to use
                 choose from "Nose-Hoover", "Berendsen", "Berendsen_inhomogeneous"
-                Default = "Nose-Hoover"
+                Default = "Berendsen_inhomogeneous"
             temperature (float): temperature for MD simulation, in K
                 Default = 300
+            starting_temperature (float): starting temperature of MD simulation, in K
+                if set as None, the MD starts with the momentum carried by ase.Atoms
+                if input is a pymatgen.core.Structure, the MD starts at 0K
+                Default = None
             timestep (float): time step in fs
                 Default = 2
             pressure (float): pressure in GPa
@@ -421,8 +444,8 @@ class MolecularDynamics:
                 Default = None
             loginterval (int): write to log file every interval steps
                 Default = 1
-            crystal_feas_logfile (str): open this file for recording crystal features during MD
-                Default = None
+            crystal_feas_logfile (str): open this file for recording crystal features
+                during MD. Default = None
             append_trajectory (bool): Whether to append to prev trajectory.
                 If false, previous trajectory gets overwritten
                 Default = False
@@ -435,7 +458,13 @@ class MolecularDynamics:
         self.ensemble = ensemble
         self.thermostat = thermostat
         if isinstance(atoms, (Structure, Molecule)):
-            atoms = AseAtomsAdaptor.get_atoms(atoms)
+            atoms = atoms.to_ase_atoms()
+
+        if starting_temperature is not None:
+            MaxwellBoltzmannDistribution(
+                atoms, temperature_K=starting_temperature, force_temp=True
+            )
+            Stationary(atoms)
 
         self.atoms = atoms
         if isinstance(model, CHGNetCalculator):
@@ -448,9 +477,9 @@ class MolecularDynamics:
             )
 
         if taut is None:
-            taut = 100 * timestep * units.fs
+            taut = 100 * timestep
         if taup is None:
-            taup = 1000 * timestep * units.fs
+            taup = 1000 * timestep
 
         if ensemble.lower() == "nve":
             """
@@ -479,11 +508,14 @@ class MolecularDynamics:
                 Nose-hoover (constant N, V, T) molecular dynamics.
                 ASE implementation currently only supports upper triangular lattice
                 """
+                self.upper_triangular_cell()
                 self.dyn = NPT(
                     atoms=self.atoms,
                     timestep=timestep * units.fs,
                     temperature_K=temperature,
-                    externalstress=None,
+                    externalstress=pressure
+                    * units.GPa,  # ase NPT does not like externalstress=None
+                    ttime=taut * units.fs,
                     pfactor=None,
                     trajectory=trajectory,
                     logfile=logfile,
@@ -529,8 +561,8 @@ class MolecularDynamics:
                     bulk_modulus_au = eos.get_bulk_modulus(unit="eV/A^3")
                     compressibility_au = eos.get_compressibility(unit="A^3/eV")
                     print(
-                        f"Done bulk modulus calculation: "
-                        f"k = {round(bulk_modulus, 3)}GPa, {round(bulk_modulus_au, 3)}eV/A^3"
+                        f"Completed bulk modulus calculation: "
+                        f"k = {bulk_modulus:.3}GPa, {bulk_modulus_au:.3}eV/A^3"
                     )
                 except Exception:
                     bulk_modulus_au = 2 / 160.2176
@@ -550,13 +582,15 @@ class MolecularDynamics:
                 see: https://gitlab.com/ase/ase/-/blob/master/ase/md/npt.py
                 ASE implementation currently only supports upper triangular lattice
                 """
+                self.upper_triangular_cell()
+                ptime = taup * units.fs
                 self.dyn = NPT(
                     atoms=self.atoms,
                     timestep=timestep * units.fs,
                     temperature_K=temperature,
                     externalstress=pressure * units.GPa,
                     ttime=taut * units.fs,
-                    pfactor=bulk_modulus * units.GPa * taup * taup,
+                    pfactor=bulk_modulus * units.GPa * ptime * ptime,
                     trajectory=trajectory,
                     logfile=logfile,
                     loginterval=loginterval,
@@ -626,7 +660,6 @@ class MolecularDynamics:
 
         Args:
             steps (int): number of MD steps
-        Returns:
         """
         if self.crystal_feas_logfile:
             obs = CrystalFeasObserver(self.atoms)
@@ -642,12 +675,39 @@ class MolecularDynamics:
 
         Args:
             atoms (Atoms): new atoms for running MD
-        Returns:
         """
         calculator = self.atoms.calc
         self.atoms = atoms
         self.dyn.atoms = atoms
         self.dyn.atoms.calc = calculator
+
+    def upper_triangular_cell(self, verbose: bool | None = False):
+        """Transform to upper-triangular cell.
+        ASE Nose-Hoover implementation only supports upper-triangular cell
+        while ASE's canonical description is lower-triangular cell.
+
+        Args:
+            verbose (bool): Whether to notify user about upper-triangular cell
+                transformation. Default = False
+        """
+        if not NPT._isuppertriangular(self.atoms.get_cell()):
+            a, b, c, alpha, beta, gamma = self.atoms.cell.cellpar()
+            angles = np.radians((alpha, beta, gamma))
+            sin_a, sin_b, _sin_g = np.sin(angles)
+            cos_a, cos_b, cos_g = np.cos(angles)
+            cos_p = (cos_g - cos_a * cos_b) / (sin_a * sin_b)
+            cos_p = np.clip(cos_p, -1, 1)
+            sin_p = (1 - cos_p**2) ** 0.5
+
+            new_basis = [
+                (a * sin_b * sin_p, a * sin_b * cos_p, a * cos_b),
+                (0, b * sin_a, b * cos_a),
+                (0, 0, c),
+            ]
+
+            self.atoms.set_cell(new_basis, scale_atoms=True)
+            if verbose:
+                print("Transformed to upper triangular unit cell.", flush=True)
 
 
 class EquationOfState:

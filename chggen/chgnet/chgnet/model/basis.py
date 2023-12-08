@@ -140,9 +140,9 @@ class GaussianExpansion(nn.Module):
         assert min < max
         assert max - min > step
         self.register_buffer("gaussian_centers", torch.arange(min, max + step, step))
-        if var is None:
-            var = step
-        self.var = var
+        self.var = var or step
+        if self.var <= 0:
+            raise ValueError(f"{var=} must be positive")
 
     def expand(self, features: Tensor) -> Tensor:
         """Apply Gaussian filter to a feature Tensor.
@@ -152,7 +152,7 @@ class GaussianExpansion(nn.Module):
 
         Returns:
             expanded features (Tensor): tensor of Gaussian distances [n, dim]
-            where the expanded dimension will be (dmax-dmin)/step + 1
+            where the expanded dimension will be (dmax - dmin) / step + 1
         """
         return torch.exp(
             -((features.reshape(-1, 1) - self.gaussian_centers) ** 2) / self.var**2
@@ -172,8 +172,8 @@ class CutoffPolynomial(nn.Module):
             Default = 5
             cutoff_coeff (float): the strength of soft-Cutoff
             0 will disable the cutoff, returning 1 at every r
-            for positive numbers > 0, the smaller cutoff_coeff is, the faster this function
-                decays. Default = 5.
+            for positive numbers > 0, the smaller cutoff_coeff is, the faster this
+                function decays. Default = 5.
         """
         super().__init__()
         self.cutoff = cutoff

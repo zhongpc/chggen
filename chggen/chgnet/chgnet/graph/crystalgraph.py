@@ -30,8 +30,8 @@ class CrystalGraph:
     ) -> None:
         """Initialize the crystal graph.
 
-        Attention! This data class is not intended to be created manually. CrystalGraph should
-        be returned by a CrystalGraphConverter
+        Attention! This data class is not intended to be created manually. CrystalGraph
+        should be returned by a CrystalGraphConverter
 
         Args:
             atomic_number (Tensor): the atomic numbers of atoms in the structure
@@ -92,7 +92,8 @@ class CrystalGraph:
         self.composition = composition
         if len(directed2undirected) != 2 * len(undirected2directed):
             raise ValueError(
-                f"{graph_id} number of directed indices != 2 * number of undirected indices!"
+                f"{graph_id} number of directed indices ({len(directed2undirected)}) !="
+                f" 2 * number of undirected indices ({2 * len(undirected2directed)})!"
             )
 
     def to(self, device: str = "cpu") -> CrystalGraph:
@@ -180,3 +181,15 @@ class CrystalGraph:
             f"CrystalGraph({composition=}, {atom_graph_cutoff=}, {bond_graph_cutoff=}, "
             f"{n_atoms=}, {atom_graph_len=}, {bond_graph_len=})"
         )
+
+    @property
+    def num_isolated_atoms(self):
+        """Number of isolated atoms given the atom graph cutoff
+        Isolated atoms are disconnected nodes in the atom graph
+        that will not get updated in CHGNet.
+        These atoms will always have calculated force equal to zero.
+
+        With the default CHGNet atom graph cutoff radius, only ~ 0.1% of MPtrj dataset
+        structures has isolated atoms.
+        """
+        return len(self.atomic_number) - torch.unique(self.atom_graph[:, 0]).numel()

@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from chggen.pl_modules.embeddings import MAX_ATOMIC_NUM
 from chggen.pl_modules.gemnet.gemnet import GemNetT
 from chggen.common.data_utils import get_pbc_distances, frac_to_cart_coords, cart_to_frac_coords, radius_graph_pbc
-from ceder_group.material_dircovery.chggen.nequip.radial_embedding_table import InitialEmbedding
+from nequip.radial_embedding import InitialEmbedding
 from nequip.e3nn_nequip import NequIP
 from ase import Atoms
 

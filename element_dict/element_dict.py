@@ -70,7 +70,9 @@ class PeriodicTable:
             out (Tensor): tensor of properties obtained.
         """
         assert prop_name in self.table.columns, f'Property {prop_name} not in table.'
-        return torch.cat([eval('self.'+'_'.join(prop_name.split(' ')))[self.symbol == symbol] for symbol in symbols])
+        self.symbols = self.symbols.to(symbols.device)
+        prop = eval('self.'+'_'.join(prop_name.split(' '))).to(symbols.device)
+        return torch.cat([prop[self.symbol == symbol] for symbol in symbols])
     
     def get_property_from_atomic_numbers(
         self, atomic_numbers: Sequence, prop_name: str,
@@ -85,7 +87,9 @@ class PeriodicTable:
             out (Tensor): tensor of properties obtained.
         """
         assert prop_name in self.table.columns, f'Property {prop_name} not in table.'
-        return torch.cat([eval('self.'+'_'.join(prop_name.split(' ')))[self.atomic_number == atomic_number] for atomic_number in atomic_numbers])
+        self.atomic_number = self.atomic_number.to(atomic_numbers.device)
+        prop = eval('self.'+'_'.join(prop_name.split(' '))).to(atomic_numbers.device)
+        return torch.cat([prop[self.atomic_number == atomic_number] for atomic_number in atomic_numbers])
     
     def __repr__(self) -> str:
         return f"Periodic Table contains properties: {', '.join(self.table.columns)}"

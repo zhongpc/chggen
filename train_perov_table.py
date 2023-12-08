@@ -5,7 +5,7 @@ import os
 from chggen.common.data_utils import get_scaler_from_data_list, get_scaler
 from chggen.pl_data.dataset import CHGNetDataset
 from chggen.pl_data.datamodule import CrystDataModule
-from chggen.pl_modules.model_old import CHGGen
+from chggen.pl_modules.model_table import CHGGen
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
@@ -14,7 +14,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 
 import warnings
 warnings.simplefilter(action='ignore', category=Warning)
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 
 def mkdir(path: str):
@@ -35,7 +35,7 @@ def mkdir(path: str):
 
 
 
-mkdir("./test_models/perov_old/")
+mkdir("./test_models/perov/")
 
 
 train_dataset = CHGNetDataset(path= './data/perov_5/test_zpc.csv', # train.csv
@@ -105,7 +105,7 @@ model_hparams ={'latent_dim': 64, 'hidden_dim': 64,
                 'beta': 0.01, # cost ratio of the KLD for VAE
                 'teacher_forcing_lattice': True,
                 'teacher_forcing_max_epoch': 1000,
-                'decoder': 'nequip'}
+                'decoder': 'nequip_table'}
 
 chggen = CHGGen(lattice_scaler= lattice_scaler, 
                 hparams_dict= model_hparams)
@@ -113,7 +113,7 @@ chggen = CHGGen(lattice_scaler= lattice_scaler,
 
 # Define the checkpoint callback
 checkpoint_callback = ModelCheckpoint(
-    dirpath= './test_models/perov_old/',
+    dirpath= './test_models/perov/',
     filename='{epoch}',        # Save the checkpoint after every epoch
     save_top_k=-1,            # Set to -1 to save all checkpoints
     save_last=True,           # Save the last model too, useful for resuming
@@ -122,8 +122,8 @@ checkpoint_callback = ModelCheckpoint(
 )
 
 
-trainer = pl.Trainer(accelerator = "gpu", 
-                     devices = [0],
+trainer = pl.Trainer(accelerator = "cpu", 
+                    #  devices = [0],
                      max_epochs= 10,
                      callbacks=[checkpoint_callback, TQDMProgressBar(refresh_rate = 1)],
                     #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training
@@ -131,5 +131,5 @@ trainer = pl.Trainer(accelerator = "gpu",
 
 trainer.fit(model= chggen, datamodule= datamodule)
 
-trainer.save_checkpoint("./test_models/perov_old/trainer_perov.ckpt")
+trainer.save_checkpoint("./test_models/perov/trainer_perov.ckpt")
 print("Done")

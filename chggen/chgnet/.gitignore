@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# C extensions
+cygraph.c
+*.so
+
+# Distribution / packaging
+build/
+dist/
+sdist/
+*.egg-info/
+
+# Unit test / coverage reports
+.coverage
+coverage.xml
+
+# Extras
+*.traj
+*.xml
+*.csv
+*.pt
+*.p
+.DS_Store
+.idea
+.ipynb_checkpoints
+bond_graph_error.cif
+test.py

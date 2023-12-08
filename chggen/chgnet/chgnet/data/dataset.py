@@ -4,7 +4,7 @@ import functools
 import os
 import random
 import warnings
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -17,6 +17,8 @@ from chgnet import utils
 from chgnet.graph import CrystalGraph, CrystalGraphConverter
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from chgnet import TrainTask
 
 warnings.filterwarnings("ignore")
@@ -33,6 +35,7 @@ class StructureData(Dataset):
         forces: list[Sequence[Sequence[float]]],
         stresses: list[Sequence[Sequence[float]]] | None = None,
         magmoms: list[Sequence[Sequence[float]]] | None = None,
+        structure_ids: list[str] | None = None,
         graph_converter: CrystalGraphConverter | None = None,
     ) -> None:
         """Initialize the dataset.
@@ -43,22 +46,36 @@ class StructureData(Dataset):
             forces (list[list[float]]): [data_size, n_atoms, 3]
             stresses (list[list[float]], optional): [data_size, 3, 3]
             magmoms (list[list[float]], optional): [data_size, n_atoms, 1]
-            graph_converter (CrystalGraphConverter, optional): Converts the structures to
-                graphs. If None, it will be set to CHGNet default converter.
+            structure_ids (list[str], optional): a list of ids to track the structures
+            graph_converter (CrystalGraphConverter, optional): Converts the structures
+                to graphs. If None, it will be set to CHGNet 0.3.0 converter
+                with AtomGraph cutoff = 6A.
+
+        Raises:
+            RuntimeError: if the length of structures and labels (energies, forces,
+                stresses, magmoms) are not equal.
         """
         for idx, struct in enumerate(structures):
             if not isinstance(struct, Structure):
                 raise ValueError(f"{idx} is not a pymatgen Structure object: {struct}")
+        for name in "energies forces stresses magmoms structure_ids".split():
+            labels = locals()[name]
+            if labels is not None and len(labels) != len(structures):
+                raise RuntimeError(
+                    f"Inconsistent number of structures and labels: "
+                    f"{len(structures)=}, len({name})={len(labels)}"
+                )
         self.structures = structures
         self.energies = energies
         self.forces = forces
         self.stresses = stresses
         self.magmoms = magmoms
+        self.structure_ids = structure_ids
         self.keys = np.arange(len(structures))
         random.shuffle(self.keys)
         print(f"{len(structures)} structures imported")
         self.graph_converter = graph_converter or CrystalGraphConverter(
-            atom_graph_cutoff=5, bond_graph_cutoff=3
+            atom_graph_cutoff=6, bond_graph_cutoff=3
         )
         self.failed_idx: list[int] = []
         self.failed_graph_id: dict[str, str] = {}
@@ -67,7 +84,7 @@ class StructureData(Dataset):
         """Get the number of structures in this dataset."""
         return len(self.keys)
 
-    @functools.lru_cache(maxsize=None)  # Cache loaded structures
+    @functools.cache  # Cache loaded structures
     def __getitem__(self, idx: int) -> tuple[CrystalGraph, dict]:
         """Get one graph for a structure in this dataset.
 
@@ -82,8 +99,12 @@ class StructureData(Dataset):
             graph_id = self.keys[idx]
             try:
                 struct = self.structures[graph_id]
+                if self.structure_ids is not None:
+                    mp_id = self.structure_ids[graph_id]
+                else:
+                    mp_id = graph_id
                 crystal_graph = self.graph_converter(
-                    struct, graph_id=graph_id, mp_id=graph_id
+                    struct, graph_id=graph_id, mp_id=mp_id
                 )
                 targets = {
                     "e": torch.tensor(self.energies[graph_id], dtype=datatype),
@@ -104,7 +125,8 @@ class StructureData(Dataset):
 
                 return crystal_graph, targets
 
-            # Omit structures with isolated atoms. Return another randomly selected structure
+            # Omit structures with isolated atoms. Return another randomly selected
+            # structure
             except Exception:
                 struct = self.structures[graph_id]
                 self.failed_graph_id[graph_id] = struct.composition.formula
@@ -137,9 +159,9 @@ class CIFData(Dataset):
             labels (str, dict): the path or dictionary of labels
             targets ("ef" | "efs" | "efm" | "efsm"): The training targets.
                 Default = "efsm"
-            graph_converter (CrystalGraphConverter, optional):
-                a CrystalGraphConverter to convert the structures,
-                if None, it will be set to CHGNet default converter
+            graph_converter (CrystalGraphConverter, optional): Converts the structures
+                to graphs. If None, it will be set to CHGNet 0.3.0 converter
+                with AtomGraph cutoff = 6A.
             energy_key (str, optional): the key of energy in the labels.
                 Default = "energy_per_atom".
             force_key (str, optional): the key of force in the labels.
@@ -155,7 +177,7 @@ class CIFData(Dataset):
         random.shuffle(self.cif_ids)
         print(f"{cif_path}: {len(self.cif_ids):,} structures imported")
         self.graph_converter = graph_converter or CrystalGraphConverter(
-            atom_graph_cutoff=5, bond_graph_cutoff=3
+            atom_graph_cutoff=6, bond_graph_cutoff=3
         )
 
         self.energy_key = energy_key
@@ -170,7 +192,7 @@ class CIFData(Dataset):
         """Get the number of structures in this dataset."""
         return len(self.cif_ids)
 
-    @functools.lru_cache(maxsize=None)  # Cache loaded structures
+    @functools.cache  # Cache loaded structures
     def __getitem__(self, idx: int) -> tuple[CrystalGraph, dict[str, Tensor]]:
         """Get one item in the dataset.
 
@@ -322,7 +344,7 @@ class GraphData(Dataset):
                         force = self.labels[mp_id][graph_id][self.force_key]
                         targets["f"] = torch.tensor(force, dtype=datatype)
                     elif key == "s":
-                        stress = self.labels[mp_id][graph_id][self.magmom_key]
+                        stress = self.labels[mp_id][graph_id][self.stress_key]
                         # Convert VASP stress
                         targets["s"] = torch.tensor(stress, dtype=datatype) * (-0.1)
                     elif key == "m":
@@ -470,7 +492,8 @@ class StructureJsonData(Dataset):
 
         Args:
             data (str | dict): file path or dir name that contain all the JSONs
-            graph_converter (CrystalGraphConverter): Converts pymatgen.core.Structure to graph
+            graph_converter (CrystalGraphConverter): Converts pymatgen.core.Structure
+                to CrystalGraph object.
             targets ("ef" | "efs" | "efm" | "efsm"): The training targets.
                 Default = "efsm"
             energy_key (str, optional): the key of energy in the labels.
@@ -500,7 +523,7 @@ class StructureJsonData(Dataset):
 
         self.keys = []
         self.keys = [
-            (mp_id, graph_id) for mp_id, dic in self.data.items() for graph_id in dic
+            (mp_id, graph_id) for mp_id, dct in self.data.items() for graph_id in dct
         ]
         random.shuffle(self.keys)
         print(f"{len(self.data)} mp_ids, {len(self)} structures imported")
@@ -517,7 +540,7 @@ class StructureJsonData(Dataset):
         """Get the number of structures with targets in the dataset."""
         return len(self.keys)
 
-    @functools.lru_cache(maxsize=None)  # Cache loaded structures
+    @functools.cache  # Cache loaded structures
     def __getitem__(self, idx):
         """Get one item in the dataset.
 
@@ -554,7 +577,8 @@ class StructureJsonData(Dataset):
                             targets["m"] = torch.abs(torch.tensor(mag, dtype=datatype))
                 return crystal_graph, targets
 
-            # Omit structures with isolated atoms. Return another randomly selected structure
+            # Omit structures with isolated atoms. Return another randomly selected
+            # structure
             except Exception:
                 structure = Structure.from_dict(self.data[mp_id][graph_id]["structure"])
                 self.failed_graph_id[graph_id] = structure.composition.formula

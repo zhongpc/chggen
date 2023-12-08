@@ -87,7 +87,7 @@ class Interaction(torch.nn.Module):
     def forward(self, x, node_attr, edge_index, edge_attr, edge_len_emb): # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
         i, j = edge_index
         num_nodes = x.size(0)
-
+        
         node_self_connection = self.sc(x, node_attr)
 
         node_features = self.lin1(x, node_attr)
