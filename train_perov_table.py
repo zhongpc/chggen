@@ -35,7 +35,7 @@ def mkdir(path: str):
 
 
 
-mkdir("./test_models/perov/")
+mkdir("./test_models/perov_table/")
 
 
 train_dataset = CHGNetDataset(path= './data/perov_5/test_zpc.csv', # train.csv
@@ -113,7 +113,7 @@ chggen = CHGGen(lattice_scaler= lattice_scaler,
 
 # Define the checkpoint callback
 checkpoint_callback = ModelCheckpoint(
-    dirpath= './test_models/perov/',
+    dirpath= './test_models/perov_table/',
     filename='{epoch}',        # Save the checkpoint after every epoch
     save_top_k=-1,            # Set to -1 to save all checkpoints
     save_last=True,           # Save the last model too, useful for resuming
@@ -131,5 +131,5 @@ trainer = pl.Trainer(accelerator = "cpu",
 
 trainer.fit(model= chggen, datamodule= datamodule)
 
-trainer.save_checkpoint("./test_models/perov/trainer_perov.ckpt")
+trainer.save_checkpoint("./test_models/perov_table/trainer_perov.ckpt")
 print("Done")

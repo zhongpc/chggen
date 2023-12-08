@@ -5,6 +5,11 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.nn.functional import one_hot
+import os
+
+
+module_dir = os.path.dirname(os.path.abspath(__file__))
+
 
 class PeriodicTable:
     """Class for periodic table of elements.
@@ -19,7 +24,7 @@ class PeriodicTable:
         Args:
             Path (str): path to csv file with periodic table data.
         """
-        self.table = pd.read_csv(path)
+        self.table = pd.read_csv(os.path.join(module_dir, './elements.csv'))
         self.atomic_number = self.table['atomic number'].values
         self.symbol = self.table['symbol'].values
         self.atomic_mass = self.table['atomic mass'].values
