@@ -71,7 +71,7 @@ class NequipTableDecoder(nn.Module):
                                 to_jimages,
                                 num_atoms,
                                 num_bonds,
-                                coord_is_cart=True,
+                                coord_is_cart=False,
                                 return_offsets=True,
                                 return_distance_vec=True,
                             )

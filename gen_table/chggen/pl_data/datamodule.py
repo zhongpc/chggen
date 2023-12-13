@@ -5,7 +5,8 @@ from pathlib import Path
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from torch_geometric.data import DataLoader, Dataset
+from torch_geometric.data import Dataset,DataLoader
+# from torch_geometric.loader import DataLoader
 
 # from chggen.common.utils import PROJECT_ROOT
 from chggen.common.data_utils import get_scaler_from_data_list

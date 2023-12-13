@@ -21,18 +21,19 @@ train_dataset = CHGNetDataset(path= './data/perov_5/train.csv', # train.csv
 name = 'train_perov',
 prop_list = ['heat_all'],
 )
-val_dataset = CHGNetDataset(path= './data/perov_5/val.csv', # val.csv
+val_dataset = CHGNetDataset(path= './data/perov_5/test_zpc.csv', # val.csv
 name = 'val_perov',
 prop_list = ['heat_all'],
 )
+
 lattice_scaler = get_scaler(dataset= train_dataset)
 with open('./test_models/lattice_scaler_perov', 'wb') as fp:
     pickle.dump(lattice_scaler, fp)
 
 datamodule = CrystDataModule(train_dataset= train_dataset,
                              val_dataset= val_dataset,
-                             num_workers=8,
-                             batch_size= 16,
+                             num_workers= 0,
+                             batch_size = 16,
                                 )
 
 # Initialize model.
@@ -40,10 +41,10 @@ model_hparams ={'latent_dim': 64, 'hidden_dim': 64,
                 'predict_property': True, 'property_dim': 1, # predict the multiple property 
                 'load_pretrain': True, 'fc_num_layers': 2, 
                 'sigma_begin': 5.0, 'sigma_end': 0.005, 'type_sigma_begin': 5.0, 'type_sigma_end': 0.01,
-                'max_atoms': 20, # should be larger than the training set.
+                'max_atoms': 100, # should be larger than the training set.
                 'num_noise_level': 50, 
                 'lattice_scale_method': 'scale_length', 
-                'cost_natom': 1.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 0,
+                'cost_natom': 1.0, 'cost_coord': 1.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 0,
                 'beta': 0.01, # cost ratio of the KLD for VAE
                 'teacher_forcing_lattice': True,
                 'teacher_forcing_max_epoch': 1000,
@@ -62,7 +63,7 @@ checkpoint_callback = ModelCheckpoint(
 )
 
 trainer = pl.Trainer(accelerator = "gpu", 
-                     devices = [0],
+                     devices = [1],
                      max_epochs= 10,
                      callbacks=[checkpoint_callback, TQDMProgressBar(refresh_rate = 1)],
                     #  strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training

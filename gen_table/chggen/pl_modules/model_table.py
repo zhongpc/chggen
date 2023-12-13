@@ -499,6 +499,7 @@ class CHGGen(BaseModule):
         cart_coords = frac_to_cart_coords(
             batch.frac_coords, pred_lengths, pred_angles, batch.num_atoms)
         cart_coords = cart_coords + cart_noises_per_atom
+        
         noisy_frac_coords = cart_to_frac_coords(
             cart_coords, pred_lengths, pred_angles, batch.num_atoms)
         # pred_atom_types is the (atomic numer - 1)

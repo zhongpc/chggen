@@ -17,7 +17,7 @@ mkdir('./test_models/structures/')
 
 # Load dataset for obtaining lattice_scaler for scaling in Niggli reduction.
 dataset = CHGNetDataset(
-    path='/home/xzdai/ceder_group/material_dircovery/chggen_table/data/perov_5/test_zpc.csv',
+    path='./data/perov_5/test_zpc.csv',
     name = 'A_good_name',
     prop_list = ['heat_all'],
 )
@@ -30,7 +30,7 @@ model_hparams = {'latent_dim': 64, 'hidden_dim': 128,
                 'load_pretrain': True, 'fc_num_layers': 1, 
                 'sigma_begin': 0.5, 'sigma_end': 0.005,
                 'type_sigma_begin': 5.0, 'type_sigma_end': 0.01,
-                'max_atoms': 10,        # should be larger than the training set.
+                'max_atoms': 100,        # should be larger than the training set.
                 'num_noise_level': 50, 
                 'lattice_scale_method': 'scale_length', 
                 'cost_natom': 1.0, 'cost_latt': 10.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 1.0,
@@ -42,7 +42,7 @@ chggen = CHGGen(
     lattice_scaler = lattice_scaler, hparams_dict = model_hparams
 )
 
-checkpoint_path = "./test_models/perov_table/trainer_perov.ckpt"
+checkpoint_path = "./test_models/perov_table/sc2-epoch=0-v25.ckpt"
 chggen = chggen.load_from_checkpoint(checkpoint_path = checkpoint_path)
 chggen.lattice_scaler = lattice_scaler
 chggen.to(device = device)
@@ -65,7 +65,7 @@ cur_frac_coords = torch.rand(50, 3, requires_grad = False, device = device)
 cur_atom_types = torch.tensor([7, 7, 8, 22, 20, 7, 8, 8, 22, 20,7, 7, 8, 40, 20,7, 7, 8, 72, 20,7, 7, 8, 22, 20
                                ,7, 7, 8, 22, 20,7, 7, 8, 28, 30,7, 7, 8, 40, 56,7, 7, 8, 22, 20,8, 8, 8, 40, 20], device = device)
 num_atoms = torch.tensor([5,5,5,5,5,5,5,5,5,5], device = device)
-lengths = 3*torch.tensor([[3.905, 3.905, 3.905],
+lengths = torch.tensor([[3.905, 3.905, 3.905],
                         [3.905, 3.905, 3.905],
                         [3.905, 3.905, 3.905],
                         [3.905, 3.905, 3.905],
