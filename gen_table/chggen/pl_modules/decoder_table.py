@@ -5,7 +5,7 @@ from torch_geometric.data import Data
 
 from chggen.pl_modules.embeddings import MAX_ATOMIC_NUM
 from chggen.pl_modules.gemnet.gemnet import GemNetT
-from chggen.common.data_utils import get_pbc_distances, frac_to_cart_coords, cart_to_frac_coords, radius_graph_pbc
+from chggen.common.data_utils import get_pbc_distances, frac_to_cart_coords, cart_to_frac_coords, radius_graph_pbc, lattice_params_to_matrix_torch
 from chggen.pl_modules.nequip.radial_embedding_table import InitialEmbedding
 from chggen.pl_modules.nequip.e3nn_nequip_table import NequIP
 
@@ -24,7 +24,7 @@ class NequipTableDecoder(nn.Module):
 
     def __init__(
         self,
-        max_neighbors=20,
+        max_neighbors=50,
         cutoff = 6.,
     ):
         super(NequipTableDecoder, self).__init__()
@@ -38,7 +38,7 @@ class NequipTableDecoder(nn.Module):
                             irreps_out     = '1x1e',
                             num_convs      = 3,
                             radial_neurons = [16, 64],
-                            num_neighbors  = 12,
+                            num_neighbors  = self.max_num_neighbors/2,
                         )
 
         # self.fc_atom = nn.Linear(hidden_dim, MAX_ATOMIC_NUM)
@@ -59,9 +59,20 @@ class NequipTableDecoder(nn.Module):
         """
         # cutoff = 6.0
         # max_neighbors = 12
+        
+        # Convert cartesian coordinates to fractional coordinates.
+        lattice = lattice_params_to_matrix_torch(lengths, angles)
+        lattice_nodes = torch.repeat_interleave(lattice, num_atoms, dim=0)
+        pred_car_coords = torch.einsum('bi,bij->bj', pred_frac_coords, lattice_nodes)  # cart coords
         edge_index, to_jimages, num_bonds = radius_graph_pbc(
-                        pred_frac_coords, lengths, angles, num_atoms, self.cutoff, self.max_num_neighbors,
+                        pred_car_coords, lengths, angles, num_atoms, self.cutoff, self.max_num_neighbors,
                         device=num_atoms.device)
+        
+        # edge_index, to_jimages, num_bonds = radius_graph_pbc(
+        #                 pred_frac_coords, lengths, angles, num_atoms, self.cutoff, self.max_num_neighbors,
+        #                 device=num_atoms.device)
+        
+        # print('edge_index', edge_index)
         
         out = get_pbc_distances(
                                 pred_frac_coords,
