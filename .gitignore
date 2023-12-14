@@ -17,3 +17,4 @@ chggen/pl_data/__pycache__/
 # Ignore specific file
 myconfig.properties
 
+.DS_Store
