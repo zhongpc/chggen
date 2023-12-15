@@ -71,10 +71,7 @@ class SubCellCut:
         formula_super = structure.composition.reduced_formula
         sub_structure_list =  []
 
-        if max_num_structure is None:
-            num_loop = len(vectors)
-        else:
-            num_loop = min(len(vectors), max_num_structure)
+        num_loop = len(vectors)
             
         # Loop over all possible subcells.
         for ii in tqdm(range(num_loop)):
@@ -111,6 +108,9 @@ class SubCellCut:
                 
                 if (formula_sub == formula_super) and (volume_deviation < 0.2):
                     sub_structure_list.append(sub_structure)
+
+                if len(sub_structure_list) >= max_num_structure:
+                    return sub_structure_list
 
         return sub_structure_list
     
