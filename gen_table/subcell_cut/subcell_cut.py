@@ -243,6 +243,7 @@ class SubCellCut:
         energy_cutoff: float = -20,
     ) -> list[dict]:
         """Filter structures with Ewald energy according to energy cutoff."""
+        
         se_list_filtered = []
         for se_dict in se_list:
             if se_dict['ewald_energy'] < energy_cutoff:
@@ -254,8 +255,9 @@ class SubCellCut:
         se_list: list[dict],
         distance_cutoff: float = 1.5,
     ) -> list[dict]:
-        """Filter structures with minimum distance between atoms."""        
-        see_list_filtered = []
+        """Filter structures with minimum distance between atoms."""     
+        
+        se_list_filtered = []
         
         for se_dict in se_list:
             structure = se_dict['structure']
