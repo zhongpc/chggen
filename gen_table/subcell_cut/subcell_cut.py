@@ -237,6 +237,7 @@ class SubCellCut:
         structure.add_oxidation_state_by_guess()
         ewald_sum = EwaldSummation(structure)
         ewald_energy = ewald_sum.total_energy
+        structure.remove_oxidation_states()
         return ewald_energy
     
     def filter_ewald_energy(
