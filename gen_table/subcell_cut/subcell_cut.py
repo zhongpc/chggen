@@ -69,6 +69,8 @@ class SubCellCut:
             )
         
         formula_super = structure.composition.reduced_formula
+        structure.make_supercell([2,2,2]) # to find atoms out of the cell boundary
+        
         sub_structure_list =  []
 
         num_loop = len(vectors)
