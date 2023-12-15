@@ -309,7 +309,7 @@ class SubCellCut:
 
         # Filter minimum distance.
         se_list_filtered = self.filter_min_distance(se_list, distance_cutoff)
-        print(f"{len(s_list_filtered)} structures left after minimum distance filtering.")
+        print(f"{len(se_list_filtered)} structures left after minimum distance filtering.")
 
         return se_list_filtered
         
