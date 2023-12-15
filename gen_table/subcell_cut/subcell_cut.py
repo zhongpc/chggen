@@ -62,6 +62,11 @@ class SubCellCut:
                 grid_size = self.grid_size_vector,
                 volume_range = self.volume_range,
             )
+        else:
+            vectors = self.generate_skewed_vectors_with_volume(
+                grid_size = self.grid_size_vector,
+                volume_range = self.volume_range,
+            )
         
         formula_super = structure.composition.reduced_formula
         sub_structure_list =  []
