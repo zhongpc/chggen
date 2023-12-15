@@ -299,7 +299,7 @@ class SubCellCut:
         print(f"{len(s_list_filtered)} structures left after minimum distance filtering.")
         
         # Save.
-        self.save(s_list_filtered, folder_path = save_folder_path)
+        # self.save(s_list_filtered, folder_path = save_folder_path)
         
         return s_list_filtered
         
