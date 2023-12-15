@@ -306,7 +306,7 @@ class SubCellCut:
         se_list = self.compute_ewald_energy(s_list)
 
         # Filter minimum distance.
-        se_list_filtered = self.filter_min_distance(se_list_filtered, distance_cutoff)
+        se_list_filtered = self.filter_min_distance(se_list, distance_cutoff)
         print(f"{len(s_list_filtered)} structures left after minimum distance filtering.")
 
         return se_list_filtered
