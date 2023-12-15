@@ -241,23 +241,24 @@ class SubCellCut:
         self,
         se_list: list[dict],
         energy_cutoff: float = -20,
-    ) -> list[Structure]:
+    ) -> list[dict]:
         """Filter structures with Ewald energy according to energy cutoff."""
-        s_list_filtered = []
+        se_list_filtered = []
         for se_dict in se_list:
             if se_dict['ewald_energy'] < energy_cutoff:
-                s_list_filtered.append(se_dict['structure'])
-        return s_list_filtered
+                se_list_filtered.append(se_dict)
+        return se_list_filtered
     
     def filter_min_distance(
         self,
-        s_list: list[Structure],
+        se_list: list[dict],
         distance_cutoff: float = 1.5,
-    ) -> list[Structure]:
+    ) -> list[dict]:
         """Filter structures with minimum distance between atoms."""        
-        s_list_filtered = []
+        see_list_filtered = []
         
-        for structure in s_list:
+        for se_dict in se_list:
+            structure = se_dict['structure']
             # Compute distance matrix.
             distance_matrix = structure.distance_matrix
             # Set the diagonal to infinity to ignore zero distances (distance of a site to itself)
@@ -266,8 +267,8 @@ class SubCellCut:
             min_distance = np.min(distance_matrix)
             
             if min_distance > distance_cutoff:
-                s_list_filtered.append(structure)
-        return s_list_filtered
+                se_list_filtered.append(se_dict)
+        return se_list_filtered
     
     @staticmethod
     def save(
@@ -303,19 +304,23 @@ class SubCellCut:
         
         # Compute ewald energy.
         se_list = self.compute_ewald_energy(s_list)
-        
-        # Filter ewald energy.
-        s_list_filtered = self.filter_ewald_energy(se_list, energy_cutoff)
-        print(f"{len(s_list_filtered)} structures left after ewald energy filtering.")
-        
+
         # Filter minimum distance.
-        s_list_filtered = self.filter_min_distance(s_list_filtered, distance_cutoff)
+        se_list_filtered = self.filter_min_distance(se_list_filtered, distance_cutoff)
         print(f"{len(s_list_filtered)} structures left after minimum distance filtering.")
+
+        return se_list_filtered
         
-        # Save.
-        # self.save(s_list_filtered, folder_path = save_folder_path)
+        # # Filter ewald energy.
+        # se_list_filtered = self.filter_ewald_energy(se_list, energy_cutoff)
+        # print(f"{len(s_list_filtered)} structures left after ewald energy filtering.")
         
-        return s_list_filtered
+        
+        
+        # # Save.
+        # # self.save(s_list_filtered, folder_path = save_folder_path)
+        
+        # return s_list_filtered
         
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}()"
