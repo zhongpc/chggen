@@ -78,7 +78,7 @@ class SubCellCut:
             # random select the origin point
 
             for jj in range(self.num_origin):
-                ijk = random.choices(np.arange(0, grid_size), k = 3)
+                ijk = random.choices(np.arange(0, self.grid_size), k = 3)
                 
                 # Select atoms with in subcell.
                 origin = np.array(ijk)
