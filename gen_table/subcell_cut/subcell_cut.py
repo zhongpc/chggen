@@ -24,11 +24,17 @@ class SubCellCut:
         grid_size_vector: int,
         grid_size_origin: int,
         volume_range: Sequence,
+        volume_deviation: float = 0.2,
+        num_origin: int = 1,
+       
     ) -> None:
         """Initialize a SubCellCut."""
+        
         self.grid_size_vector = grid_size_vector
         self.grid_size_origin = grid_size_origin
         self.volume_range = volume_range
+        self.volume_deviation = volume_deviation
+        self.num_origin = num_origin
     
     def find_sub_structure(
         self,
@@ -67,36 +73,38 @@ class SubCellCut:
         # Loop over all possible subcells.
         for ii in tqdm(range(num_loop)):
             # Loop over all grid points for origins.
-            for i in range(0, self.grid_size_origin):
-                for j in range(0, self.grid_size_origin):
-                    for k in range(0, self.grid_size_origin):
-                        
-                        # Select atoms with in subcell.
-                        origin = np.array([i,j,k])
-                        vector = vectors[ii]
-                        selected_atoms = [
-                            site for site in structure.sites 
-                            if self.is_point_in_parallelepiped(site.coords, origin, vector)
-                        ]
 
-                        # Generate sub-structure in unit cells.
-                        sublattice = Lattice(vector)
-                        new_atoms = [
-                            PeriodicSite(site.specie, site.coords, sublattice, coords_are_cartesian = True) 
-                            for site in selected_atoms
-                        ]
-                        try:
-                            sub_structure = Structure.from_sites(new_atoms)
-                        except:
-                            continue
-                        
-                        # Check if sub-structure is valid (volume and composition).
-                        formula_sub = sub_structure.composition.reduced_formula
-                        avg_volume = sub_structure.volume / sub_structure.num_sites
-                        volume_deviation = np.abs(avg_volume - pred_volume) / pred_volume
-                        
-                        if (formula_sub == formula_super) and (volume_deviation < 0.2):
-                            sub_structure_list.append(sub_structure)
+            # random select the origin point
+
+            for jj in range(self.num_origin):
+                ijk = random.choices(np.arange(0, grid_size), k = 3)
+                
+                # Select atoms with in subcell.
+                origin = np.array(ijk)
+                vector = vectors[ii]
+                selected_atoms = [
+                    site for site in structure.sites 
+                    if self.is_point_in_parallelepiped(site.coords, origin, vector)
+                ]
+    
+                # Generate sub-structure in unit cells.
+                sublattice = Lattice(vector)
+                new_atoms = [
+                    PeriodicSite(site.specie, site.coords, sublattice, coords_are_cartesian = True) 
+                    for site in selected_atoms
+                ]
+                try:
+                    sub_structure = Structure.from_sites(new_atoms)
+                except:
+                    continue
+                
+                # Check if sub-structure is valid (volume and composition).
+                formula_sub = sub_structure.composition.reduced_formula
+                avg_volume = sub_structure.volume / sub_structure.num_sites
+                volume_deviation = np.abs(avg_volume - pred_volume) / pred_volume
+                
+                if (formula_sub == formula_super) and (volume_deviation < 0.2):
+                    sub_structure_list.append(sub_structure)
 
         return sub_structure_list
     
