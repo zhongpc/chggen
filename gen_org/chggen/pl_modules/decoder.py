@@ -8,7 +8,7 @@ from chggen.common.data_utils import (
     lattice_params_to_matrix_torch,    
 )
 from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding
-from chggen.pl_modules.nequip.e3nn_nequip import NequIP
+from chggen.pl_modules.nequip.e3nn_nequip import NequIP, NequIP_v2
 
 
 
@@ -26,20 +26,34 @@ class NequipTableDecoder(nn.Module):
         self,
         max_neighbors = 50,
         cutoff = 6.,
+        model_version = None,
     ):
         super(NequipTableDecoder, self).__init__()
         self.cutoff = cutoff
         self.max_num_neighbors = max_neighbors
-        self.nequip = NequIP(init_embed     = InitialEmbedding(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim= 32),
-                            irreps_node_x  = '32x0e',
-                            irreps_node_z  = '32x0e',
-                            irreps_hidden  = '32x0e + 16x1e + 8x2e',
-                            irreps_edge    = '32x0e + 16x1e + 8x2e',
-                            irreps_out     = '1x1e',
-                            num_convs      = 3,
-                            radial_neurons = [16, 64],
-                            num_neighbors  = self.max_num_neighbors / 2,
-                        )
+
+        if model_version = 'nequip_v2':
+            self.nequip = NequIP_v2(init_embed     = InitialEmbedding(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim= 32),
+                    irreps_node_x  = '32x0e',
+                    irreps_node_z  = '32x0e',
+                    irreps_hidden  = '32x0e + 16x1e + 8x2e',
+                    irreps_edge    = '32x0e + 16x1e + 8x2e',
+                    irreps_out     = '1x1e',
+                    num_convs      = 3,
+                    radial_neurons = [16, 64],
+                    num_neighbors  = self.max_num_neighbors / 2,
+                            )
+        else:
+            self.nequip = NequIP(init_embed     = InitialEmbedding(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim= 32),
+                                irreps_node_x  = '32x0e',
+                                irreps_node_z  = '32x0e',
+                                irreps_hidden  = '32x0e + 16x1e + 8x2e',
+                                irreps_edge    = '32x0e + 16x1e + 8x2e',
+                                irreps_out     = '1x1e',
+                                num_convs      = 3,
+                                radial_neurons = [16, 64],
+                                num_neighbors  = self.max_num_neighbors / 2,
+                            )
 
     def forward(
         self, 
