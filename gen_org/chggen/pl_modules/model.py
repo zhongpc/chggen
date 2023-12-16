@@ -71,7 +71,7 @@ class CHGGen(BaseModule):
 
         if self.hparams.decoder == 'nequip':
             self.decoder = NequipTableDecoder(model_version = 'nequip')
-        elif self.hparams.decoder == 'nequip':
+        elif self.hparams.decoder == 'nequip_v2':
             self.decoder = NequipTableDecoder(model_version = 'nequip_v2')
         else:
             raise NotImplementedError
