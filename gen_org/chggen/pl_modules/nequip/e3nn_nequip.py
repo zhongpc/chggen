@@ -286,7 +286,7 @@ class NequIP_v2(nn.Module):
                     num_neighbors  = num_neighbors,   # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
                 )
 
-                self.interaction_combine = Compose(conv_group, gate_group)
+                self.interaction_combine = Compose(conv_combine, gate_combine)
                 
             irreps = gate_period.irreps_out
         
@@ -303,8 +303,7 @@ class NequIP_v2(nn.Module):
         h_node_x_period, h_node_z_period = data.h_node_x_period, data.h_node_z_period
         h_node_x_group, h_node_z_group = data.h_node_x_group, data.h_node_z_group
         h_edge = data.h_edge
-        
-        
+           
         
         # Graph convolutions
         edge_sh = o3.spherical_harmonics(self.irreps_edge, edge_attr, normalize=True, normalization='component')
@@ -312,17 +311,13 @@ class NequIP_v2(nn.Module):
             h_node_x_period = layer_period(h_node_x_period, h_node_z_period, edge_index, edge_sh, h_edge)
         for layer_group in self.interactions_group:        
             h_node_x_group = layer_group(h_node_x_group, h_node_z_group, edge_index, edge_sh, h_edge)
+
         
-        # print('h_node_x_period:', h_node_x_period)
-        # print('h_node_x_group:', h_node_x_group)
-        # print('h_node_z_period:', h_node_z_period)
-        # print('h_node_z_group', h_node_z_group)
-            
         # Mix the two outputs.
         h_node_x = h_node_x_period + h_node_x_group
         h_node_z = h_node_z_period + h_node_z_group
 
-        # combined message passing
+        # Combined message passing
         h_node_x = self.interaction_combine(h_node_x, h_node_z, edge_index, edge_sh, h_edge)        
         
         # Final output layer
