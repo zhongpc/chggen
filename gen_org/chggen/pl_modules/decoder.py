@@ -24,7 +24,7 @@ class NequipTableDecoder(nn.Module):
 
     def __init__(
         self,
-        max_neighbors=20,
+        max_neighbors = 50,
         cutoff = 6.,
     ):
         super(NequipTableDecoder, self).__init__()
@@ -38,7 +38,7 @@ class NequipTableDecoder(nn.Module):
                             irreps_out     = '1x1e',
                             num_convs      = 3,
                             radial_neurons = [16, 64],
-                            num_neighbors  = 12,
+                            num_neighbors  = self.max_num_neighbors / 2,
                         )
 
     def forward(
