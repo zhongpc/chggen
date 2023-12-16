@@ -26,7 +26,7 @@ class NequipTableDecoder(nn.Module):
         self,
         max_neighbors = 50,
         cutoff = 6.,
-        model_version = None,
+        model_version = 'nequip',
     ):
         super(NequipTableDecoder, self).__init__()
         self.cutoff = cutoff
