@@ -354,7 +354,7 @@ class CHGGen(BaseModule):
         return loss
 
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        outputs = self(batch, teacher_forcing=False, training=False)
+        outputs = self(batch, training=False)
         log_dict, loss = self.compute_stats(batch, outputs, prefix='val')
         self.log_dict(
             log_dict,
@@ -366,7 +366,7 @@ class CHGGen(BaseModule):
         return loss
 
     def test_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        outputs = self(batch, teacher_forcing=False, training=False)
+        outputs = self(batch, training=False)
         log_dict, loss = self.compute_stats(batch, outputs, prefix='test')
         self.log_dict(
             log_dict,
