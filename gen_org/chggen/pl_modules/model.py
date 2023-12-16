@@ -58,7 +58,7 @@ class CHGGen(BaseModule):
                                  'beta': 0.01,
                                  'teacher_forcing_lattice': True,
                                  'teacher_forcing_max_epoch': 1000,
-                                 'decoder': 'nequip_table'},
+                                 'decoder': 'nequip'},
                  lattice_scaler = None,
                  **kwargs) -> None:
         super().__init__()
@@ -69,8 +69,10 @@ class CHGGen(BaseModule):
         self.encoder = CHGNet_encoder(return_crystal_feas = True)
 
 
-        if self.hparams.decoder == 'nequip_table':
-            self.decoder = NequipTableDecoder()
+        if self.hparams.decoder == 'nequip':
+            self.decoder = NequipTableDecoder(model_type = 'nequip')
+        elif self.hparams.decoder == 'nequip':
+            self.decoder = NequipTableDecoder(model_type = 'nequip_v2')
         else:
             raise NotImplementedError
 
