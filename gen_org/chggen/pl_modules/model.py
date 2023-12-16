@@ -342,7 +342,7 @@ class CHGGen(BaseModule):
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         teacher_forcing = (
             self.current_epoch <= self.hparams.teacher_forcing_max_epoch)
-        outputs = self(batch, teacher_forcing, training=True)
+        outputs = self(batch, training=True)
         log_dict, loss = self.compute_stats(batch, outputs, prefix='train')
         self.log_dict(
             log_dict,
