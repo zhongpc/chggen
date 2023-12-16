@@ -32,7 +32,7 @@ class NequipTableDecoder(nn.Module):
         self.cutoff = cutoff
         self.max_num_neighbors = max_neighbors
 
-        if model_version = 'nequip_v2':
+        if model_version == 'nequip_v2':
             self.nequip = NequIP_v2(init_embed     = InitialEmbedding(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim= 32),
                     irreps_node_x  = '32x0e',
                     irreps_node_z  = '32x0e',
