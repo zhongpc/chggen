@@ -34,10 +34,11 @@ def process_one(
 
     try:
         structure = Structure.from_str(crystal_str, fmt = 'cif')
+        crys_graph = crys_converter(structure)
     except:
         return None
 
-    crys_graph = crys_converter(structure)
+    # crys_graph = crys_converter(structure)
     # try:
     #     crys_graph = crys_converter(structure)
     # except:
