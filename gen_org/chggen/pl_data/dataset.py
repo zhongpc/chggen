@@ -31,10 +31,13 @@ def process_one(
 ) -> dict:
     """Process one row of the csv file."""
     crystal_str = row['cif']                    # cif file
-    structure = Structure.from_str(crystal_str, fmt = 'cif')
+
+    try:
+        structure = Structure.from_str(crystal_str, fmt = 'cif')
+    except:
+        return None
 
     crys_graph = crys_converter(structure)
-
     # try:
     #     crys_graph = crys_converter(structure)
     # except:
