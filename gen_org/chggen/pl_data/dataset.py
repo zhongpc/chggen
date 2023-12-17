@@ -38,12 +38,8 @@ def process_one(
     except:
         return None
 
-    # crys_graph = crys_converter(structure)
-    # try:
-    #     crys_graph = crys_converter(structure)
-    # except:
-    #     print("Crystal graph construction failed in CHGNet. Check the process_csv.")
-    #     return None
+    if structure.num_sites >= 1000:
+        return None
 
     properties = {k: row[k] for k in prop_list if k in row.keys()}
     result_dict = {
