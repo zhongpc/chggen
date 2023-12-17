@@ -60,7 +60,7 @@ class NequIP(nn.Module):
         irreps_hidden  = '64x0e + 32x1e + 32x2e',
         irreps_edge    = '1x0e + 1x1e + 1x2e',
         irreps_out     = '1x0e',
-        num_convs      = 3,
+        num_convs      = 4,
         radial_neurons = [16, 64],
         num_neighbors  = 12,
     ):
@@ -199,7 +199,7 @@ class NequIP_v2(nn.Module):
         irreps_hidden  = '64x0e + 32x1e + 32x2e',
         irreps_edge    = '1x0e + 1x1e + 1x2e',
         irreps_out     = '1x0e',
-        num_convs      = 3,
+        num_convs      = 4,
         radial_neurons = [16, 64],
         num_neighbors  = 12,
     ):
@@ -236,7 +236,7 @@ class NequIP_v2(nn.Module):
             irreps_gates = o3.Irreps([(mul, ir) for mul, _ in irreps_gated]).simplify()
 
 
-            if ii < (num_convs - 1):
+            if ii < (num_convs//2):
                 gate_period = Gate(
                     irreps_scalars, [act_scalars[ir.p] for _, ir in irreps_scalars],  # scalar
                     irreps_gates,   [act_gates[ir.p]   for _, ir in irreps_gates],  # gates (scalars)
@@ -286,7 +286,7 @@ class NequIP_v2(nn.Module):
                     num_neighbors  = num_neighbors,   # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
                 )
 
-                self.interaction_combine = Compose(conv_combine, gate_combine)
+                self.interactions_combine.append(Compose(conv_combine, gate_combine))
                 
             irreps = gate_period.irreps_out
         
@@ -318,7 +318,8 @@ class NequIP_v2(nn.Module):
         h_node_z = h_node_z_period + h_node_z_group
 
         # Combined message passing
-        h_node_x = self.interaction_combine(h_node_x, h_node_z, edge_index, edge_sh, h_edge)        
+        for layer_combine in self.interactions_combine: 
+            h_node_x = self.interaction_combine(h_node_x, h_node_z, edge_index, edge_sh, h_edge)        
         
         # Final output layer
         return self.out(h_node_x, h_node_z)
