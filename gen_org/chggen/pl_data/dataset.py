@@ -31,15 +31,15 @@ def process_one(
 ) -> dict:
     """Process one row of the csv file."""
     crystal_str = row['cif']                    # cif file
-    structure = Structure.from_str(crystal_str, fmt = 'cif')
 
-    crys_graph = crys_converter(structure)
+    try:
+        structure = Structure.from_str(crystal_str, fmt = 'cif')
+        crys_graph = crys_converter(structure)
+    except:
+        return None
 
-    # try:
-    #     crys_graph = crys_converter(structure)
-    # except:
-    #     print("Crystal graph construction failed in CHGNet. Check the process_csv.")
-    #     return None
+    if structure.num_sites >= 1000:
+        return None
 
     properties = {k: row[k] for k in prop_list if k in row.keys()}
     result_dict = {
