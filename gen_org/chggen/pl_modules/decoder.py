@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import pickle
 from torch_geometric.data import Data
 
 from chggen.common.data_utils import (
@@ -100,6 +101,11 @@ class NequipTableDecoder(nn.Module):
             edge_attr = out['distance_vec']
         )
 
-        pred_cart_coord_diff = self.nequip(data)
-        
+        try:
+            pred_cart_coord_diff = self.nequip(data)
+        except:
+            print("Error found")
+            with open('./error_data', 'wb') as fp:
+                pickle.dump(data, fp)
+            
         return pred_cart_coord_diff
