@@ -153,6 +153,9 @@ class SubCellCut:
                                    (volume < volume_range[1]) and \
                                    ((np.max(norm) - np.min(norm)) < np.mean(norm)/2 ):
                                     subcells.append(np.array([vec_a, vec_b, vec_c]))
+
+
+        random.shuffle(subcells)
         return subcells
     
     @staticmethod
