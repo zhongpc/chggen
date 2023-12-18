@@ -101,12 +101,17 @@ class NequipTableDecoder(nn.Module):
             edge_attr = out['distance_vec']
         )
 
-        try:
-            pred_cart_coord_diff = self.nequip(data)
-        except:
-            print("Error found")
-            debug_data = (pred_cart_coords, lengths, angles, data)
-            with open('./error_data', 'wb') as fp:
-                pickle.dump(debug_data, fp)
+
+        ####### debug only #######
+        # try:
+        #     pred_cart_coord_diff = self.nequip(data)
+        # except:
+        #     print("Error found")
+        #     debug_data = (pred_cart_coords, lengths, angles, data)
+        #     with open('./error_data', 'wb') as fp:
+        #         pickle.dump(debug_data, fp)
+        ####### debug only #######
+
+        pred_cart_coord_diff = self.nequip(data)
             
         return pred_cart_coord_diff
