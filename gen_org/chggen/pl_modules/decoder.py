@@ -40,7 +40,7 @@ class NequipTableDecoder(nn.Module):
                     irreps_hidden  = '32x0e + 32x1e + 16x2e',
                     irreps_edge    = '32x0e + 32x1e + 16x2e',
                     irreps_out     = '1x1e',
-                    num_convs      = 4,
+                    num_convs      = 5,
                     radial_neurons = [16, 64],
                     num_neighbors  = self.max_num_neighbors / 2,
                             )
@@ -51,7 +51,7 @@ class NequipTableDecoder(nn.Module):
                                 irreps_hidden  = '32x0e + 32x1e + 16x2e',
                                 irreps_edge    = '32x0e + 32x1e + 16x2e',
                                 irreps_out     = '1x1e',
-                                num_convs      = 4,
+                                num_convs      = 5,
                                 radial_neurons = [16, 64],
                                 num_neighbors  = self.max_num_neighbors / 2,
                             )
