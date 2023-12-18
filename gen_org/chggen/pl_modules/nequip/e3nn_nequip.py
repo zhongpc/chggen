@@ -319,7 +319,7 @@ class NequIP_v2(nn.Module):
 
         # Combined message passing
         for layer_combine in self.interactions_combine: 
-            h_node_x = self.interaction_combine(h_node_x, h_node_z, edge_index, edge_sh, h_edge)        
+            h_node_x = layer_combine(h_node_x, h_node_z, edge_index, edge_sh, h_edge)        
         
         # Final output layer
         return self.out(h_node_x, h_node_z)
