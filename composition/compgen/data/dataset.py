@@ -1,5 +1,8 @@
 """Class for creating composition dataset."""
 
+from __future__ import annotations
+
+from typing import List
 import functools
 import os.path as osp
 
@@ -31,7 +34,7 @@ class CompositionDataset(Dataset):
     """
     def __init__(
         self,
-        data_path,
+        data_path: str | None,
         com_tag = 'formula',
         ave_v_tag = 'avg_volume',
         identifiers = ["material_id", "formula"],
@@ -39,6 +42,9 @@ class CompositionDataset(Dataset):
     ) -> None:
         """Initialize a CompositionDataset with a given data path."""
         super(CompositionDataset, self).__init__()
+        
+        if data_path is None:
+            return None
         
         assert len(identifiers) == 2, "Two identifiers are required"
         assert osp.exists(data_path), f"{data_path} does not exist!"
@@ -115,7 +121,6 @@ class CompositionDataset(Dataset):
             raise ValueError(
                 f"cry-id {cry_id} [{composition}] composition cannot be parsed into elements"
             )
-        
         # Create densely commected graph. 
         nele = len(elements)
         self_fea_idx = []
@@ -123,7 +128,7 @@ class CompositionDataset(Dataset):
         for i, _ in enumerate(elements):
             self_fea_idx += [i] * nele
             nbr_fea_idx += list(range(nele))
-
+        
         # convert all data to tensors
         elem_weights = torch.FloatTensor(weights)
         elem_fea = torch.FloatTensor(atom_fea)
@@ -132,12 +137,12 @@ class CompositionDataset(Dataset):
         
         # Compute target composition.
         comp = torch.LongTensor([element.number for element in elements])
-        comp = F.one_hot(comp-1, num_classes = 118)    # Predict Z number - 1.
+        comp = F.one_hot(comp-1, num_classes = 103)    # Predict Z number - 1.
         comp = comp.sum(axis=0)/comp.sum()
         comp = comp.view(1,-1)
         
         # Compute average volume.
-        ave_v = torch.FloatTensor([ave_v])
+        ave_v = torch.FloatTensor([ave_v]) if ave_v is not None else None
         
         # Save into PyG Data.
         data = Data(
@@ -151,3 +156,37 @@ class CompositionDataset(Dataset):
         )
 
         return data
+    
+    def save_scaler(
+        self, scaler_path: str,
+    ) -> None:
+        """Save scaler to scaler_path."""
+        torch.save(self.v_scaler, scaler_path)
+    
+    @classmethod
+    def from_formulas(
+        cls, formulas: List[str],
+    ) -> Data:
+        """Initialize a composition dataset from atom types, like 
+        generated from composition sampler."""
+        df = {
+            "material_id": None,
+            "cif": None,
+            "formula": formulas,
+            "avg_volume": None,
+        }
+        df = pd.DataFrame(df)
+        
+        # Create a new instance of the class.
+        instance = cls(data_path=None)
+        instance.com_tag = "formula"
+        instance.ave_v_tag = "avg_volume"
+        instance.identifiers = ["material_id", "formula"]
+        instance.df = df
+        
+        # Read matscholar embedding.
+        fea_name = "matscholar-embedding.json"
+        fea_path = osp.join(osp.dirname(osp.abspath(__file__)), fea_name)
+        instance.elem_features = Featurizer.from_json(fea_path)
+        instance.elem_emb_len = instance.elem_features.embedding_size
+        return instance

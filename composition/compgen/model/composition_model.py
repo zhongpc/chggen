@@ -9,7 +9,8 @@ import torch.nn.functional as F
 from torch_scatter import scatter_add, scatter_max
 from torch_geometric.data import Data
 
-from ..utils import StandardScalerTorch
+from ..utils import StandardScalerTorch, atom_types2compositions
+
 
 
 class CompositionModel(nn.Module):
@@ -28,7 +29,7 @@ class CompositionModel(nn.Module):
         weight_pow = 1,
         activation = nn.SiLU,
         batchnorm = False,
-        atom_num_dim: int = 118,
+        atom_num_dim: int = 103,                # Accommodate for Matscholar embedding.
         v_scaler: StandardScalerTorch = None,
         **kwargs,
     ) -> None:
@@ -108,7 +109,7 @@ class CompositionModel(nn.Module):
         logvar = self.encoder_logvar(cry_fea)
         z = self.reparameterize(mu, logvar)
         comp = self.decoder_comp(z)
-        ave_v = self.decoder_ave_v(z)
+        ave_v = self.decoder_ave_v(cry_fea)
         
         return mu, logvar, comp, ave_v
     
@@ -130,23 +131,49 @@ class CompositionModel(nn.Module):
             logvar = self.encoder_logvar(cry_fea)
         return mu, logvar
     
-    def sample(
+    def sample_comp(
         self, num_samples: int, num_atoms: torch.Tensor | int,
     ) -> Any:
         """Sample from the composition model."""
-        if self.v_scaler is None:
-            raise ValueError("v_scaler is not provided.")
+        # Sample letent vectors.
         z = torch.randn(num_samples, self.model_args["elem_fea_len"])
         
+        # Decode to composition.
         self.eval()
         with torch.no_grad():
             comp = self.decoder_comp(z)
-            ave_v = self.decoder_ave_v(z)
-            ave_v = self.v_scaler.inverse_transform(ave_v)
-            if isinstance(num_atoms, int):
-                num_atoms = torch.tensor([num_atoms] * num_samples)
-            atom_types = self.sample_composition(comp, num_atoms)
-        return comp, ave_v, atom_types
+        if isinstance(num_atoms, int):
+            num_atoms = torch.tensor([num_atoms] * num_samples)
+        else:
+            raise NotImplementedError
+        
+        # Convert normalized composition to atom types.
+        atom_types = self.sample_composition(comp, num_atoms)
+        
+        # Convert atom types to formulas.
+        comps = atom_types2compositions(atom_types)
+        formulas = [comp.reduced_formula for comp in comps]
+        return comp, atom_types, formulas
+        
+    def predict_ave_v(
+        self, data: Data, 
+    ) -> Any:
+        """Predict the average volume per atom of the material."""
+        if self.v_scaler is None:
+            raise ValueError("v_scaler is not provided.")
+        
+        self.eval()
+        with torch.no_grad():
+            cry_fea, _ = self.material_nn(
+                elem_weights = data.elem_weights, 
+                elem_fea = data.x, 
+                self_fea_idx = data.edge_index[0], 
+                nbr_fea_idx = data.edge_index[1], 
+                cry_elem_idx = data.batch,
+            )
+            ave_v = self.decoder_ave_v(cry_fea)
+        ave_v = self.v_scaler.inverse_transform(ave_v)
+        return ave_v
     
     @staticmethod
     def sample_composition(composition_prob, num_atoms):
@@ -187,7 +214,7 @@ class CompositionModel(nn.Module):
             sampled_comp = sampled_comp[torch.randperm(sampled_comp.size(0))]
             sampled_comp = sampled_comp[:num_atom]
             all_sampled_comp.append(sampled_comp)
-
+            
         # all_sampled_comp = torch.cat(all_sampled_comp, dim=0)
         # assert all_sampled_comp.size(0) == num_atoms.sum()
         return all_sampled_comp

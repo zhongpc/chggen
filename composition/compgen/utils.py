@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import json
 
 import torch
 import numpy as np
-from pathlib import Path
+
+
+from pymatgen.core import Composition, Element
 
 EPSILON = 1e-7
 
@@ -58,9 +61,18 @@ def get_scaler(
             key='avg_volume',
         )
     else:                       # Load
-        lattice_scaler = torch.load(
-            Path(scaler_path) / 'avg_volume.pt')
+        lattice_scaler = torch.load(scaler_path)
     return lattice_scaler
+
+def atom_types2compositions(
+    atom_types: List[torch.Tensor], 
+) -> List[Composition]:
+    """Convert list of atom types to list of compositions."""
+    compositions = []
+    for atom_type in atom_types:
+        # Convert atomic numbers to compositions
+        compositions.append(Composition("".join([str(Element.from_Z(int(atom))) for atom in atom_type])))
+    return compositions
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
