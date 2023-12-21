@@ -66,7 +66,7 @@ def process_csv(
 ) -> List[dict]:
     """Process csv file to get the list of dict containing infomation for one
     structure."""
-    df = pd.read_csv(input_file)
+    df = pd.read_csv(input_file, keep_default_na=False, na_values=[''])
 
     unordered_results = p_umap(
         process_one,
