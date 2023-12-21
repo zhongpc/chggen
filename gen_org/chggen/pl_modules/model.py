@@ -41,8 +41,8 @@ class BaseModule(pl.LightningModule):
         self.save_hyperparameters()
     
     ## TODO: generalize the optimizer 
-    def configure_optimizers(self, lr = 1e-3, use_lr_scheduler = True):
-        opt = torch.optim.Adam(self.parameters(), lr= lr)
+    def configure_optimizers(self, use_lr_scheduler = True):
+        opt = torch.optim.Adam(self.parameters(), lr= self.hparams.lr)
         if use_lr_scheduler:
             return [opt]
         scheduler = ExponentialLR(opt, gamma=0.95)
@@ -58,7 +58,8 @@ class CHGGen(BaseModule):
                                  'beta': 0.01,
                                  'teacher_forcing_lattice': True,
                                  'teacher_forcing_max_epoch': 1000,
-                                 'decoder': 'nequip'},
+                                 'decoder': 'nequip',
+                                 'lr': 1e-3,},
                  lattice_scaler = None,
                  **kwargs) -> None:
         super().__init__()
