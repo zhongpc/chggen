@@ -33,7 +33,12 @@ def process_one(
     crystal_str = row['cif']                    # cif file
 
     try:
-        structure = Structure.from_str(crystal_str, fmt = 'cif')
+        structure = Structure.from_str(
+            crystal_str, 
+            fmt = 'cif', 
+            site_tolerance=0,
+            frac_tolerance=0,
+        )
         crys_graph = crys_converter(structure)
     except:
         return None
