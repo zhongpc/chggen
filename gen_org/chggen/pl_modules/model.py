@@ -15,7 +15,6 @@ from chggen.common.data_utils import (
     frac_to_cart_coords, 
     min_distance_sqr_pbc,
 )
-from chggen.pl_modules.encoder import CHGNet_encoder
 from chggen.pl_modules.decoder import NequipTableDecoder
 
 
@@ -42,34 +41,33 @@ class BaseModule(pl.LightningModule):
     
     ## TODO: generalize the optimizer 
     def configure_optimizers(self, use_lr_scheduler = True):
-        opt = torch.optim.Adam(self.parameters(), lr= self.hparams.lr)
+        opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
         if use_lr_scheduler:
             return [opt]
         scheduler = ExponentialLR(opt, gamma=0.95)
         return {"optimizer": opt, "lr_scheduler": scheduler, "monitor": "val_loss"}
 
 class CHGGen(BaseModule):
-    def __init__(self, 
-                 hparams_dict = {'latent_dim': 256, 'hidden_dim': 128, 'property_dim': 1, 'load_pretrain': True, 'fc_num_layers': 2, 
-                                 'sigma_begin': 10.0, 'sigma_end': 0.01, 'type_sigma_begin': 5.0, 'type_sigma_end': 0.01,
-                                 'max_atoms': 20, 'predict_property': False, 'num_noise_level': 50, 
-                                 'lattice_scale_method': 'scale_length', 
-                                 'cost_natom': 1.0, 'cost_coord': 10.0, 'cost_type': 1.0, 'cost_lattice': 10.0, 'cost_composition': 1.0, 'cost_edge': 10.0, 'cost_property': 1.0,
-                                 'beta': 0.01,
-                                 'teacher_forcing_lattice': True,
-                                 'teacher_forcing_max_epoch': 1000,
-                                 'decoder': 'nequip',
-                                 'lr': 1e-3,},
-                 lattice_scaler = None,
-                 **kwargs) -> None:
+    def __init__(
+            self, 
+            hparams_dict = {'latent_dim': 256, 'hidden_dim': 128, 'property_dim': 1, 'load_pretrain': True, 'fc_num_layers': 2, 
+                            'sigma_begin': 10.0, 'sigma_end': 0.01,
+                            'predict_property': False, 'num_noise_level': 50, 
+                            'lattice_scale_method': 'scale_length', 
+                            'cost_coord': 10.0, 'cost_property': 1.0,
+                            'beta': 0.01,
+                            'teacher_forcing_lattice': True,
+                            'teacher_forcing_max_epoch': 1000,
+                            'decoder': 'nequip',
+                            'lr': 1e-3,},
+            lattice_scaler = None,
+            **kwargs,
+        ) -> None:
         super().__init__()
         
         self.save_hyperparameters(hparams_dict)
-        self.lattice_scaler = lattice_scaler
 
-        self.encoder = CHGNet_encoder(return_crystal_feas = True)
-
-
+        # Initialize decoder.
         if self.hparams.decoder == 'nequip':
             self.decoder = NequipTableDecoder(model_version = 'nequip')
         elif self.hparams.decoder == 'nequip_v2':
@@ -77,19 +75,18 @@ class CHGGen(BaseModule):
         else:
             raise NotImplementedError
 
-        # for property prediction.
+        # For property prediction.
         if self.hparams.predict_property:
             self.fc_property = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
                                          self.hparams.fc_num_layers, self.hparams.property_dim)
-
+        # Noise levels.
         sigmas = torch.tensor(np.exp(np.linspace(
             np.log(self.hparams.sigma_begin),
             np.log(self.hparams.sigma_end),
             self.hparams.num_noise_level)), dtype=torch.float32)
-
         self.sigmas = nn.Parameter(sigmas, requires_grad=False)
 
-        # obtain from datamodule.
+        # Obtain from datamodule.
         self.lattice_scaler = lattice_scaler
         self.scaler = None
 
@@ -408,14 +405,6 @@ class CHGGen(BaseModule):
         # read from self.log_dict
         metrics = self.trainer.logged_metrics
 
-        ## TODO: change the loss_step to average loss of the epoch
-        ## TODO: get loss_avg
         print("*"*100)
-        print(f"Epoch {self.current_epoch} - loss: {metrics.get('train_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - num_atom_loss: {metrics.get('train_natom_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - lattice_loss: {metrics.get('train_lattice_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - coord_loss: {metrics.get('train_coord_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - type_loss: {metrics.get('train_type_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - kld_loss: {metrics.get('train_kld_loss_step', 0):.4f}")
-        print(f"Epoch {self.current_epoch} - composition_loss: {metrics.get('train_composition_loss_step', 0):.4f}")
-        
+        print(f"Epoch {self.current_epoch} - loss: {metrics.get('train_loss_epoch', 0):.4f}")
+        print(f"Epoch {self.current_epoch} - coord_loss: {metrics.get('train_coord_loss_epoch', 0):.4f}")

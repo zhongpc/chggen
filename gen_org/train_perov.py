@@ -43,7 +43,10 @@ model_hparams ={'latent_dim': 64, 'hidden_dim': 64,
                 'beta': 0.01, # cost ratio of the KLD for VAE
                 'teacher_forcing_lattice': True,
                 'teacher_forcing_max_epoch': 1000,
-                'decoder': 'nequip_table'}
+                'decoder': 'nequip_table',
+                'lr': 1e-3,
+                }
+
 chggen = CHGGen(lattice_scaler= lattice_scaler, 
                 hparams_dict= model_hparams)
 
