@@ -5,8 +5,7 @@ from torch_geometric.data import Data
 
 from chggen.common.data_utils import (
     get_pbc_distances, 
-    radius_graph_pbc, 
-    lattice_params_to_matrix_torch,    
+    radius_graph_pbc,
 )
 from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding
 from chggen.pl_modules.nequip.e3nn_nequip import NequIP, NequIP_v2

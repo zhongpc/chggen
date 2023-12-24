@@ -50,10 +50,9 @@ class BaseModule(pl.LightningModule):
 class CHGGen(BaseModule):
     def __init__(
             self, 
-            hparams_dict = {'latent_dim': 256, 'hidden_dim': 128, 'property_dim': 1, 'load_pretrain': True, 'fc_num_layers': 2, 
+            hparams_dict = {'latent_dim': 256, 'hidden_dim': 128, 'property_dim': 1, 'fc_num_layers': 2, 
                             'sigma_begin': 10.0, 'sigma_end': 0.01,
                             'predict_property': False, 'num_noise_level': 50, 
-                            'lattice_scale_method': 'scale_length', 
                             'cost_coord': 10.0, 'cost_property': 1.0,
                             'beta': 0.01,
                             'teacher_forcing_lattice': True,

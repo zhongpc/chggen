@@ -39,7 +39,6 @@ class CrystDataModule(pl.LightningDataModule):
         test_dataset: Dataset = None,
         num_workers: int = 1,
         batch_size: int = 16,
-        scaler_path: Optional[str] = None,
     ) -> None:
         """Initialize the module with the given dataset."""
         super().__init__()
@@ -48,31 +47,14 @@ class CrystDataModule(pl.LightningDataModule):
         self.test_dataset = test_dataset
         self.num_workers = num_workers
         self.batch_size = batch_size
-        self.get_scaler(scaler_path)
 
     def prepare_data(self) -> None:
         """Download the dataset."""
         pass
 
-    def get_scaler(self, scaler_path: str = None):
-        """Get scalers (mean, std) from scaler_path or from data."""
-        if scaler_path is None:             # Estimate the scaler from data.
-            self.lattice_scaler = get_scaler_from_data_list(
-                self.train_dataset.cached_data, key='reduced_lengths_and_angles',
-            )
-
-        else:                               # Load the scaler from scaler_path.
-            self.lattice_scaler = torch.load(
-                Path(scaler_path) / 'lattice_scaler.pt')
-
     def setup(self, stage: Optional[str] = None):
         """construct datasets and assign data scalers."""
-        if stage is None or stage == "fit":
-            self.train_dataset.lattice_scaler = self.lattice_scaler
-            self.val_dataset.lattice_scaler = self.lattice_scaler
-
-        if stage is None or stage == "test":
-            self.test_dataset.lattice_scaler = self.lattice_scaler
+        pass
 
     def train_dataloader(self) -> DataLoader:
         """Returns a DataLoader for training."""
