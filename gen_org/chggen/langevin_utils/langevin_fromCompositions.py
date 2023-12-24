@@ -6,9 +6,40 @@ import numpy as np
 
 from chggen.pl_modules.model import CHGGen
 from chggen.common.data_utils import mkdir, get_pymatgen_structure
-
-
 from pymatgen.core import Structure, Composition, Element
+
+
+def get_common_valences():
+
+    # Generate a dictionary of common valences for all elements
+    common_valences = {}
+
+    for element in Element:
+        print(element, element.common_oxidation_states)
+
+        if len(element.common_oxidation_states) > 0:
+            ele_dict = {element.symbol: element.common_oxidation_states[0]}
+            common_valences.update(ele_dict)
+        else:
+            ele_dict = {element.symbol: 0}
+
+            common_valences.update(ele_dict)
+
+
+    common_valences['H'] = 1
+    common_valences['C'] = 4
+    common_valences['Si'] = 4
+    common_valences['P'] = 5
+    common_valences['Ge'] = 4
+    common_valences['As'] = 5
+    common_valences['Sn'] = 4
+    common_valences['Sb'] = 5
+
+    common_valences['Fe'] = 3
+    common_valences['Mn'] = 3
+    
+    return common_valences
+
 
 
 def run_langevin_supercell(model, 
