@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from torch.optim.lr_scheduler import ExponentialLR
+from torch.optim.lr_scheduler import ExponentialLR, LambdaLR
 from torch_scatter import scatter
 import pytorch_lightning as pl
 
@@ -38,14 +38,49 @@ class BaseModule(pl.LightningModule):
         super().__init__()
         # populate self.hparams with args and kwargs automagically!
         self.save_hyperparameters()
+        
+    # def configure_optimizers(self, use_lr_scheduler = True):
+    #     opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+    #     if not use_lr_scheduler:
+    #         return [opt]
+    #     scheduler = ExponentialLR(opt, gamma=0.95)
+    #     return {
+    #         "optimizer": opt, 
+    #         "lr_scheduler": {
+    #             "scheduler": scheduler,
+    #             "monitor": "val_loss",
+    #         }
+    #     }
     
-    ## TODO: generalize the optimizer 
     def configure_optimizers(self, use_lr_scheduler = True):
         opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
-        if use_lr_scheduler:
+        if not use_lr_scheduler:
             return [opt]
-        scheduler = ExponentialLR(opt, gamma=0.95)
-        return {"optimizer": opt, "lr_scheduler": scheduler, "monitor": "val_loss"}
+        
+        num_epoch = self.trainer.max_epochs
+        num_batch = self.hparams.num_batch
+        total_step = num_epoch * num_batch  # Total number of training steps
+        warmup_step = 0.1 * total_step      # Number of steps for the warm-up (10% of total)
+        
+        eta_max = self.hparams.lr           # Maximum learning rate
+        eta_min = 1e-2 * self.hparams.lr    # Minimum learning rate (1% of max lr)
+
+        # Lambda function for linear warmup
+        warmup_lambda = lambda step: step / warmup_step
+        # Lambda function for cosine annealing after warmup
+        cosine_lambda = lambda step: (eta_min + 0.5 * (eta_max - eta_min) * (1 + np.cos(np.pi * (step - warmup_step) / (total_step - warmup_step)))) / self.hparams.lr
+        # Combined lambda function
+        combined_lambda = lambda step: cosine_lambda(step) if step >= warmup_step else warmup_lambda(step)
+        # Create the scheduler
+        scheduler = LambdaLR(opt, lr_lambda=combined_lambda)
+        return {
+            "optimizer": opt, 
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",  # or "epoch" depending on your preference
+                "frequency": 1,
+            }
+        }
 
 class CHGGen(BaseModule):
     def __init__(
@@ -381,6 +416,8 @@ class CHGGen(BaseModule):
     ) -> Any:
         coord_loss = outputs['coord_loss']
         loss = self.hparams.cost_coord * coord_loss
+        current_lr = self.trainer.optimizers[0].param_groups[0]['lr']
+        
         log_dict = {
             f'{prefix}_loss': loss,
             f'{prefix}_coord_loss': coord_loss,
@@ -394,11 +431,11 @@ class CHGGen(BaseModule):
             })
 
         else:
+            self.log(f'{prefix}_lr', current_lr, on_step=True, on_epoch=False, prog_bar=True, batch_size=16)
             self.log(f'{prefix}_loss', loss, on_step=True, on_epoch=True, prog_bar=True, batch_size=16)
             self.log(f'{prefix}_coord_loss', coord_loss, on_step=True, on_epoch=True, prog_bar=True, batch_size=16)
-           
+        
         return log_dict, loss
-
 
     def on_train_epoch_end(self):
         # read from self.log_dict
