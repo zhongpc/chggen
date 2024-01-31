@@ -68,7 +68,7 @@ ori_frac_coords = ori_frac_coords.float()
 
 # Sampling.
 ld_kwargs = SimpleNamespace(
-    n_step_each = 3,            # Corrector
+    n_step_each = 0,            # Corrector
     min_sigma = 0,
     signal_to_noise_ratio = 0.4,
     save_traj = False,
