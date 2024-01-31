@@ -19,7 +19,7 @@ chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/universal/trai
 # Load data.
 mp_O_Li = pd.read_csv('../lithium/data/mp_O_Li.csv', keep_default_na=False, na_values=[''])
 
-num = 20
+num = 2
 s0 = Structure.from_str(mp_O_Li.iloc[num]['cif'], fmt='cif', frac_tolerance=0, site_tolerance=0)
 s0.to(filename='./data/test_models/universal/structures_test/structure_ori.cif')
 
@@ -68,11 +68,11 @@ ori_frac_coords = ori_frac_coords.float()
 
 # Sampling.
 ld_kwargs = SimpleNamespace(
-    n_step_each = 5,
+    n_step_each = 0,            # Corrector
     min_sigma = 0,
     signal_to_noise_ratio = 0.4,
-    save_traj = False,
-    disable_bar = False,                     
+    save_traj = True,
+    disable_bar = False,  
 )
 
 results = chggen.conditional_langevin_dynamics(
@@ -85,13 +85,13 @@ results = chggen.conditional_langevin_dynamics(
     ld_kwargs = ld_kwargs,
 )
 
-# repeats = len(results['all_frac_coords'])//results['num_atoms'][0]
-repeats = 1
+repeats = len(results['all_frac_coords'])//results['num_atoms'][0]
+# repeats = 1
 lengths = results['lengths'].repeat(repeats,1)
 angles = results['angles'].repeat(repeats,1)
 num_atoms = results['num_atoms'].repeat(repeats)
-frac_coords = results['frac_coords']
-atom_types = results['atom_types']
+frac_coords = results['all_frac_coords']
+atom_types = results['all_atom_types']
 
 s_list = get_pymatgen_structure(
     lengths = lengths,         

@@ -335,6 +335,44 @@ class CHGGen(BaseModule):
                 # Update
                 cur_cart_coords = cur_cart_coords + step_sizes[t_cur] * pred_cart_coord_diff + noise_cart
                 
+                # Corrector
+                for step in range(ld_kwargs.n_step_each):
+                    
+                    cur_cart_coords = frac_to_cart_coords(
+                        frac_coords=cur_frac_coords, 
+                        lengths=lengths, 
+                        angles=angles, 
+                        num_atoms=num_atoms, 
+                    )
+                    
+                    # Compute score term
+                    with torch.no_grad():
+                        pred_cart_coord_diff = self.decoder(
+                            pred_cart_coords=cur_cart_coords, 
+                            pred_atom_types=cur_atom_types, 
+                            num_atoms=num_atoms, 
+                            lengths=lengths, 
+                            angles=angles,
+                        )
+                    pred_cart_coord_diff = pred_cart_coord_diff / sigmas[t_cur]
+                    
+                    # Compute step term
+                    eps = 2 * (
+                        ld_kwargs.signal_to_noise_ratio * torch.sqrt(torch.tensor(3)) / torch.norm(pred_cart_coord_diff, dim=1, keepdim=True)    
+                    )**2
+                    
+                    # Compute noise term
+                    noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(2*eps)
+
+                    # Update
+                    cur_cart_coords = cur_cart_coords + eps * pred_cart_coord_diff + noise_cart
+                    cur_frac_coords = cart_to_frac_coords(
+                        cart_coords=cur_cart_coords, 
+                        lengths=lengths, 
+                        angles=angles, 
+                        num_atoms=num_atoms,
+                    )
+                
                 # Obtain x_known at t_cur
                 if t_cur != -1:
                     noise_cart = torch.randn_like(ori_cart_coords) * sigmas[t_cur]   # Forward cart coords noise
@@ -395,7 +433,7 @@ class CHGGen(BaseModule):
     def get_scheduler(
         t_T = 199,
         jump_len = 10,
-        jump_n_sample = 5,
+        jump_n_sample = 3,
     ):
         """Obtain a sigma scheduler for the given parameters."""
         jumps = {} 
