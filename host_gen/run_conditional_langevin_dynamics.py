@@ -10,7 +10,7 @@ from pymatgen.core import Structure, Element
 
 
 
-mkdir('./data/test_models/universal/structures_test/')
+mkdir('./data/host/')
 
 # Load pre-trained model.
 chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/mp/trainer_mp.ckpt', strict=False)
@@ -19,7 +19,7 @@ chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/mp/trainer_mp.
 s0 = Structure.from_file('../gen_org/LaCl3.cif')
 
 # Construct framework structure.
-num_insert_ion = 6
+num_insert_ion = 1
 insert_ion = Element('Li')
 ori_frac_coords = torch.tensor(s0.frac_coords)
 
@@ -43,7 +43,7 @@ ori_frac_coords = torch.tensor(ori_frac_coords)
 num_atoms = torch.tensor([len(cur_atom_types)])
 
 angles = torch.tensor([s0.lattice.angles])
-lengths = torch.tensor([s0.lattice.lengths])*1.07
+lengths = torch.tensor([s0.lattice.lengths])*1.4
 
 # Quantization
 lengths = lengths.float()
@@ -56,10 +56,10 @@ ori_frac_coords = ori_frac_coords.float()
 
 # Sampling.
 ld_kwargs = SimpleNamespace(
-    n_step_each = 5,
+    n_step_each = 0,
     min_sigma = 0,
     signal_to_noise_ratio = 0.4,
-    save_traj = False,
+    save_traj = True,
     disable_bar = False,                     
 )
 
@@ -73,13 +73,13 @@ results = chggen.conditional_langevin_dynamics(
     ld_kwargs = ld_kwargs,
 )
 
-# repeats = len(results['all_frac_coords'])//results['num_atoms'][0]
-repeats = 1
+repeats = len(results['all_frac_coords'])//results['num_atoms'][0]
+# repeats = 1
 lengths = results['lengths'].repeat(repeats,1)
 angles = results['angles'].repeat(repeats,1)
 num_atoms = results['num_atoms'].repeat(repeats)
-frac_coords = results['frac_coords']
-atom_types = results['atom_types']
+frac_coords = results['all_frac_coords']
+atom_types = results['all_atom_types']
 
 s_list = get_pymatgen_structure(
     lengths = lengths,         
@@ -90,6 +90,6 @@ s_list = get_pymatgen_structure(
 )
 
 for i, structure in enumerate(s_list):
-    structure.to(filename='./data/test_models/universal/structures_test/structure_' + str(i) + '.cif')
+    structure.to(filename='./data/host/structure_' + str(i) + '.cif')
 
 print("Done")

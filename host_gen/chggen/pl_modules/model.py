@@ -183,7 +183,7 @@ class CHGGen(BaseModule):
             noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(step_size)
             
             # Update
-            cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart
+            cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart/3.74
             cur_frac_coords = cart_to_frac_coords(
                 cart_coords=cur_cart_coords, 
                 lengths=lengths, 
@@ -278,16 +278,14 @@ class CHGGen(BaseModule):
         """
         if ld_kwargs.save_traj:
             all_frac_coords = []
-            all_pred_cart_coord_diff = []
-            all_noise_cart = []
             all_atom_types = []
         
-        times = self.get_scheduler(t_T=self.sigmas.size(0)-1)
+        times = self.get_scheduler(t_T=self.sigmas.size(0))[:-1]  # -1 is the end term.
         
         # Revert sigmas and step_size to accomodate the scheduler.
         step_sizes = self.sigmas[:-1]**2 - self.sigmas[1:]**2
-        step_sizes = torch.flip(step_sizes, dims=(0,))         # Increasing step size.
-        sigmas = torch.flip(self.sigmas[:-1], dims=(0,))     # Increasing noise level.
+        step_sizes = torch.flip(step_sizes, dims=(0,))          # Increasing step size.
+        sigmas = torch.flip(self.sigmas[:-1], dims=(0,))        # Increasing noise level.
         
         # Langevin dynamics.
         
@@ -327,13 +325,17 @@ class CHGGen(BaseModule):
                 pred_cart_coord_diff = pred_cart_coord_diff / sigmas[t_cur]
                 
                 # Compute noise term
-                if t_cur != -1:
-                    noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(step_sizes[t_cur])    # Backward cart coords noise
-                else:
-                    noise_cart = 0
-                    
+                
+                noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(step_sizes[t_cur])   # Backward cart coords noise
+    
                 # Update
-                cur_cart_coords = cur_cart_coords + step_sizes[t_cur] * pred_cart_coord_diff + noise_cart
+                cur_cart_coords = cur_cart_coords + step_sizes[t_cur] * pred_cart_coord_diff + noise_cart/3.74
+                cur_frac_coords = cart_to_frac_coords(
+                    cart_coords=cur_cart_coords, 
+                    lengths=lengths, 
+                    angles=angles, 
+                    num_atoms=num_atoms,
+                )
                 
                 # Corrector
                 for step in range(ld_kwargs.n_step_each):
@@ -374,11 +376,14 @@ class CHGGen(BaseModule):
                     )
                 
                 # Obtain x_known at t_cur
-                if t_cur != -1:
-                    noise_cart = torch.randn_like(ori_cart_coords) * sigmas[t_cur]   # Forward cart coords noise
-                else:
-                    noise_cart = 0
-                
+                cur_cart_coords = frac_to_cart_coords(
+                    frac_coords=cur_frac_coords,
+                    lengths=lengths,
+                    angles=angles,
+                    num_atoms=num_atoms,
+                )
+                noise_cart = torch.randn_like(ori_cart_coords) * sigmas[t_cur]   # Forward cart coords noise
+
                 # Update
                 known_cur_cart_coords = ori_cart_coords + noise_cart
                 
@@ -431,7 +436,7 @@ class CHGGen(BaseModule):
     
     @staticmethod
     def get_scheduler(
-        t_T = 199,
+        t_T = 200,
         jump_len = 10,
         jump_n_sample = 3,
     ):

@@ -11,17 +11,17 @@ from pymatgen.core import Structure, Element
 
 
 
-mkdir('./data/test_models/universal/structures_test/')
+mkdir('./data/recon/')
 
 # Load pre-trained model.
-chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/universal/trainer_universal.ckpt', strict=False)
+chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/mp/trainer_mp.ckpt', strict=False)
 
 # Load data.
 mp_O_Li = pd.read_csv('../lithium/data/mp_O_Li.csv', keep_default_na=False, na_values=[''])
 
-num = 2
+num = 20
 s0 = Structure.from_str(mp_O_Li.iloc[num]['cif'], fmt='cif', frac_tolerance=0, site_tolerance=0)
-s0.to(filename='./data/test_models/universal/structures_test/structure_ori.cif')
+s0.to(filename='./data/recon/structure_ori.cif')
 
 num_Li = int(s0.composition.get_el_amt_dict()['Li'])
 print(f"{num_Li} Li atoms in s0 with total {len(s0)} atoms")
@@ -68,10 +68,10 @@ ori_frac_coords = ori_frac_coords.float()
 
 # Sampling.
 ld_kwargs = SimpleNamespace(
-    n_step_each = 0,            # Corrector
+    n_step_each = 3,            # Corrector
     min_sigma = 0,
     signal_to_noise_ratio = 0.4,
-    save_traj = True,
+    save_traj = False,
     disable_bar = False,  
 )
 
@@ -85,13 +85,13 @@ results = chggen.conditional_langevin_dynamics(
     ld_kwargs = ld_kwargs,
 )
 
-repeats = len(results['all_frac_coords'])//results['num_atoms'][0]
-# repeats = 1
+# repeats = len(results['all_frac_coords'])//results['num_atoms'][0]
+repeats = 1
 lengths = results['lengths'].repeat(repeats,1)
 angles = results['angles'].repeat(repeats,1)
 num_atoms = results['num_atoms'].repeat(repeats)
-frac_coords = results['all_frac_coords']
-atom_types = results['all_atom_types']
+frac_coords = results['frac_coords']
+atom_types = results['atom_types']
 
 s_list = get_pymatgen_structure(
     lengths = lengths,         
@@ -102,6 +102,6 @@ s_list = get_pymatgen_structure(
 )
 
 for i, structure in enumerate(s_list):
-    structure.to(filename='./data/test_models/universal/structures_test/structure_' + str(i) + '.cif')
+    structure.to(filename='./data/recon/structure_' + str(i) + '.cif')
 
 print("Done")
