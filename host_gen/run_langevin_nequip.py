@@ -10,18 +10,17 @@ from chggen.common.data_utils import mkdir, get_pymatgen_structure
 
 
 
-mkdir('./data/de_novo/')
+mkdir('../data/de_novo/')
 
 # Load model.
-device = torch.device('cuda')
-checkpoint_path = "../gen_org/data/test_models/mp/trainer_mp.ckpt"
+device = torch.device('cuda:6')
+checkpoint_path = "../../gen_org/data/test_models/mp/epoch=10.ckpt"
 chggen = CHGGen.load_from_checkpoint(checkpoint_path = checkpoint_path)
 chggen.to(device = device)
-print('Model loaded')
 
 # Sampling.
 ld_kwargs = SimpleNamespace(
-    n_step_each = 0,
+    n_step_each = 10,
     min_sigma = 0,
     signal_to_noise_ratio = 0.4,
     save_traj = False,
@@ -46,13 +45,6 @@ angles = torch.tensor([[90, 90, 90],
                        [90, 90, 90],
                        [90, 90, 90],
                        [90, 90, 90],], device = device)
-
-# cur_frac_coords = torch.rand(5, 3, requires_grad = False, device = device)
-# cur_atom_types = torch.tensor([8, 8, 8, 22, 20], device = device)
-# num_atoms = torch.tensor([5], device = device)
-# length = 4
-# lengths = torch.ones((1,3), device=device) * length
-# angles = torch.tensor([[90, 90, 90]], device = device)
 
 results = chggen.langevin_dynamics(
     lengths=lengths,
@@ -80,6 +72,6 @@ s_list = get_pymatgen_structure(
 )
 
 for i, structure in enumerate(s_list):
-    structure.to(filename='./data/de_novo/structure_' + str(i) + '.cif')
+    structure.to(filename='../data/de_novo/structure_' + str(i) + '.cif')
 
 print("Done")

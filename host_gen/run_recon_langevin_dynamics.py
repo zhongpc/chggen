@@ -12,14 +12,17 @@ from pymatgen.core import Structure, Element
 
 
 mkdir('./data/recon/')
-
+device = 'cuda:6'
 # Load pre-trained model.
-chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/mp/trainer_mp.ckpt', strict=False)
+chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/mp/epoch=9.ckpt', strict=False, map_location=device)
 
 # Load data.
 mp_O_Li = pd.read_csv('../lithium/data/mp_O_Li.csv', keep_default_na=False, na_values=[''])
 
-num = 20
+# TODO: Filter out the structures with too many atoms (more than 20).
+# It is discovered that the structures with too many atoms is hard to reconstruct. 
+
+num = 10
 s0 = Structure.from_str(mp_O_Li.iloc[num]['cif'], fmt='cif', frac_tolerance=0, site_tolerance=0)
 s0.to(filename='./data/recon/structure_ori.cif')
 
@@ -58,13 +61,13 @@ angles = torch.tensor([s0.lattice.angles])
 lengths = torch.tensor([s0.lattice.lengths])
 
 # Quantization
-lengths = lengths.float()
-angles = angles.float()
-num_atoms = num_atoms.int()
-frac_coords = ori_frac_coords.float()
-atom_masks = atom_masks.bool()
-cur_atom_types = cur_atom_types.int()
-ori_frac_coords = ori_frac_coords.float()
+lengths = lengths.float().to(device)
+angles = angles.float().to(device)
+num_atoms = num_atoms.int().to(device)
+frac_coords = ori_frac_coords.float().to(device)
+atom_masks = atom_masks.bool().to(device)
+cur_atom_types = cur_atom_types.int().to(device)
+ori_frac_coords = ori_frac_coords.float().to(device)
 
 # Sampling.
 ld_kwargs = SimpleNamespace(

@@ -183,7 +183,7 @@ class CHGGen(BaseModule):
             noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(step_size)
             
             # Update
-            cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart/3.74
+            cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart
             cur_frac_coords = cart_to_frac_coords(
                 cart_coords=cur_cart_coords, 
                 lengths=lengths, 
@@ -329,7 +329,7 @@ class CHGGen(BaseModule):
                 noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(step_sizes[t_cur])   # Backward cart coords noise
     
                 # Update
-                cur_cart_coords = cur_cart_coords + step_sizes[t_cur] * pred_cart_coord_diff + noise_cart/3.74
+                cur_cart_coords = cur_cart_coords + step_sizes[t_cur] * pred_cart_coord_diff + noise_cart
                 cur_frac_coords = cart_to_frac_coords(
                     cart_coords=cur_cart_coords, 
                     lengths=lengths, 
@@ -436,7 +436,7 @@ class CHGGen(BaseModule):
     
     @staticmethod
     def get_scheduler(
-        t_T = 200,
+        t_T = 1000,
         jump_len = 10,
         jump_n_sample = 3,
     ):

@@ -8,18 +8,23 @@ from chggen.common.data_utils import mkdir, get_pymatgen_structure
 
 from pymatgen.core import Structure, Element
 
-
+from pymatgen.transformations.standard_transformations import OrderDisorderedStructureTransformation
 
 mkdir('./data/host/')
-
+device = 'cuda:6'
 # Load pre-trained model.
-chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/mp/trainer_mp.ckpt', strict=False)
+chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/mp/epoch=9.ckpt', strict=False, map_location=device)
 
 # Load structure.
-s0 = Structure.from_file('../gen_org/LaCl3.cif')
+s0 = Structure.from_file('../gen_org/LaCl3.cif')*[2,2,2]
+
+s0.replace_species({'La3+': {'Nb5+':0.5, 'La3+': 0.5}})
+order = OrderDisorderedStructureTransformation(algo = 2)
+s0 = order.apply_transformation(s0, return_ranked_list = False)
+s0.to(filename='./data/host/structure_ori.cif')
 
 # Construct framework structure.
-num_insert_ion = 1
+num_insert_ion = 8
 insert_ion = Element('Li')
 ori_frac_coords = torch.tensor(s0.frac_coords)
 
@@ -43,23 +48,23 @@ ori_frac_coords = torch.tensor(ori_frac_coords)
 num_atoms = torch.tensor([len(cur_atom_types)])
 
 angles = torch.tensor([s0.lattice.angles])
-lengths = torch.tensor([s0.lattice.lengths])*1.4
+lengths = torch.tensor([s0.lattice.lengths])*1.0
 
 # Quantization
-lengths = lengths.float()
-angles = angles.float()
-num_atoms = num_atoms.int()
-frac_coords = ori_frac_coords.float()
-atom_masks = atom_masks.bool()
-cur_atom_types = cur_atom_types.int()
-ori_frac_coords = ori_frac_coords.float()
+lengths = lengths.float().to(device)
+angles = angles.float().to(device)
+num_atoms = num_atoms.int().to(device)
+frac_coords = ori_frac_coords.float().to(device)
+atom_masks = atom_masks.bool().to(device)
+cur_atom_types = cur_atom_types.int().to(device)
+ori_frac_coords = ori_frac_coords.float().to(device)
 
 # Sampling.
 ld_kwargs = SimpleNamespace(
-    n_step_each = 0,
+    n_step_each = 1,
     min_sigma = 0,
     signal_to_noise_ratio = 0.4,
-    save_traj = True,
+    save_traj = False,
     disable_bar = False,                     
 )
 
@@ -73,13 +78,13 @@ results = chggen.conditional_langevin_dynamics(
     ld_kwargs = ld_kwargs,
 )
 
-repeats = len(results['all_frac_coords'])//results['num_atoms'][0]
-# repeats = 1
+# repeats = len(results['all_frac_coords'])//results['num_atoms'][0]
+repeats = 1
 lengths = results['lengths'].repeat(repeats,1)
 angles = results['angles'].repeat(repeats,1)
 num_atoms = results['num_atoms'].repeat(repeats)
-frac_coords = results['all_frac_coords']
-atom_types = results['all_atom_types']
+frac_coords = results['frac_coords']
+atom_types = results['atom_types']
 
 s_list = get_pymatgen_structure(
     lengths = lengths,         
