@@ -8,7 +8,7 @@ from ..embeddings.element_table import PeriodicTable
 
 
 # radial embedding
-class InitialEmbedding(nn.Module):
+class InitialEmbedding_PTE(nn.Module):
     def __init__(self, num_periods, num_groups, cutoff, emb_dim):
         super().__init__()
         self.periodic_table = PeriodicTable()
@@ -27,6 +27,31 @@ class InitialEmbedding(nn.Module):
         data.h_node_z_period = self.embed_node_z_period(x_period)
         data.h_node_x_group = self.embed_node_x_group(x_group)
         data.h_node_z_group = self.embed_node_z_group(x_group)
+
+        # Embed edge
+        data.h_edge = self.embed_edge(data.edge_attr.norm(dim=-1))
+        
+        return data
+    
+    
+
+# radial embedding
+class InitialEmbedding_EE(nn.Module):
+    def __init__(self, num_species, cutoff, emb_dim):
+        super().__init__()
+        self.embed_node_x = nn.Embedding(num_species, emb_dim)
+        self.embed_node_z = nn.Embedding(num_species, emb_dim)
+        self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis=16)
+    
+    def forward(self, data):
+        # Embed node
+        x = data.x
+        x[(x>=57) * (x<=70)] = 57   # put La series in one element embedding
+        x[(x>=89) * (x<=102)] = 89  # put Ac series in one element embedding
+        x = x - 1                   # index from 0.
+        
+        data.h_node_x = self.embed_node_x(x)
+        data.h_node_z = self.embed_node_z(x)
 
         # Embed edge
         data.h_edge = self.embed_edge(data.edge_attr.norm(dim=-1))

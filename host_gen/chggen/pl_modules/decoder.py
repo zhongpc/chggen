@@ -7,8 +7,8 @@ from chggen.common.data_utils import (
     get_pbc_distances, 
     radius_graph_pbc,
 )
-from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding
-from chggen.pl_modules.nequip.e3nn_nequip import NequIP, NequIP_v2
+from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding_PTE, InitialEmbedding_EE
+from chggen.pl_modules.nequip.e3nn_nequip import NequIP_PTE, NequIP_EE
 
 
 
@@ -26,34 +26,40 @@ class NequipTableDecoder(nn.Module):
         self,
         max_neighbors = 40,
         cutoff = 6.,
-        model_version = 'nequip',
+        model_version = 'nequip_pte',
     ):
         super(NequipTableDecoder, self).__init__()
         self.cutoff = cutoff
         self.max_num_neighbors = max_neighbors
 
-        if model_version == 'nequip_v2':
-            self.nequip = NequIP_v2(init_embed     = InitialEmbedding(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim= 32),
-                    irreps_node_x  = '32x0e',
-                    irreps_node_z  = '32x0e',
-                    irreps_hidden  = '32x0e + 32x1e + 8x2e',
-                    irreps_edge    = '32x0e + 32x1e + 8x2e',
-                    irreps_out     = '1x1e',
-                    num_convs      = 5,
-                    radial_neurons = [16, 64],
-                    num_neighbors  = self.max_num_neighbors / 2,
-                            )
+        if model_version == 'nequip_pte':       # Periodic table embedding
+            self.nequip = NequIP_PTE(
+                init_embed = InitialEmbedding_PTE(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim=32),
+                irreps_node_x  = '32x0e',
+                irreps_node_z  = '32x0e',
+                irreps_hidden  = '32x0e + 32x1e + 8x2e',
+                irreps_edge    = '32x0e + 32x1e + 8x2e',
+                irreps_out     = '1x1e',
+                num_convs      = 5,
+                radial_neurons = [16, 64],
+                num_neighbors  = self.max_num_neighbors / 2,
+            )
+            
+        elif model_version == 'nequip_ee':      # Element embedding
+            self.nequip = NequIP_EE(
+                init_embed = InitialEmbedding_EE(num_species=89, cutoff=cutoff, emb_dim=32),
+                irreps_node_x  = '32x0e',
+                irreps_node_z  = '32x0e',
+                irreps_hidden  = '32x0e + 32x1e + 8x2e',
+                irreps_edge    = '32x0e + 32x1e + 8x2e',
+                irreps_out     = '1x1e',
+                num_convs      = 5,
+                radial_neurons = [16, 64],
+                num_neighbors  = self.max_num_neighbors / 2,
+            )
+            
         else:
-            self.nequip = NequIP(init_embed     = InitialEmbedding(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim= 32),
-                                irreps_node_x  = '32x0e',
-                                irreps_node_z  = '32x0e',
-                                irreps_hidden  = '32x0e + 32x1e + 8x2e',
-                                irreps_edge    = '32x0e + 32x1e + 8x2e',
-                                irreps_out     = '1x1e',
-                                num_convs      = 5,
-                                radial_neurons = [16, 64],
-                                num_neighbors  = self.max_num_neighbors / 2,
-                            )
+            raise NotImplementedError(f"Model version {model_version} not implemented")
 
     def forward(
         self, 
@@ -63,15 +69,17 @@ class NequipTableDecoder(nn.Module):
         lengths, 
         angles,
     ):
-        """
-        args:
+        """Forward pass of the decoder.
+        
+        Args:
             z: (N_cryst, num_latent)
             pred_cart_coords: (N_atoms, 3)
             pred_atom_types: (N_atoms, ), need to use atomic number e.g. H = 1
             num_atoms: (N_cryst,)
             lengths: (N_cryst, 3)
             angles: (N_cryst, 3)
-        returns:
+        
+        Returns:
             atom_frac_coords: (N_atoms, 3)
             atom_types: (N_atoms, MAX_ATOMIC_NUM)
         """
@@ -105,17 +113,6 @@ class NequipTableDecoder(nn.Module):
             edge_index = edge_index,
             edge_attr = out['distance_vec']
         )
-
-
-        ####### debug only #######
-        # try:
-        #     pred_cart_coord_diff = self.nequip(data)
-        # except:
-        #     print("Error found")
-        #     debug_data = (pred_cart_coords, lengths, angles, data)
-        #     with open('./error_data', 'wb') as fp:
-        #         pickle.dump(debug_data, fp)
-        ####### debug only #######
 
         pred_cart_coord_diff = self.nequip(data)
             

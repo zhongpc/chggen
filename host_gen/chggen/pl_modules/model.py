@@ -85,16 +85,16 @@ class BaseModule(pl.LightningModule):
 class CHGGen(BaseModule):
     def __init__(
             self, 
-            hparams_dict = {'latent_dim': 256, 'hidden_dim': 128, 'property_dim': 1, 'fc_num_layers': 2, 
-                            'sigma_begin': 10.0, 'sigma_end': 0.01,
-                            'predict_property': False, 'num_noise_level': 50, 
-                            'cost_coord': 10.0, 'cost_property': 1.0,
-                            'beta': 0.01,
-                            'teacher_forcing_lattice': True,
-                            'teacher_forcing_max_epoch': 1000,
-                            'decoder': 'nequip',
-                            'lr': 1e-3,},
-            lattice_scaler = None,
+            hparams_dict = {
+                'latent_dim': 256, 'hidden_dim': 128, 
+                'property_dim': 1, 'fc_num_layers': 2, 
+                'sigma_begin': 10.0, 'sigma_end': 0.01,
+                'predict_property': False, 'num_noise_level': 50, 
+                'cost_coord': 10.0, 'cost_property': 1.0,
+                'beta': 0.01,
+                'decoder': 'nequip',
+                'lr': 1e-3,    
+            },
             **kwargs,
         ) -> None:
         super().__init__()
@@ -102,27 +102,71 @@ class CHGGen(BaseModule):
         self.save_hyperparameters(hparams_dict)
 
         # Initialize decoder.
-        if self.hparams.decoder == 'nequip':
-            self.decoder = NequipTableDecoder(model_version = 'nequip')
-        elif self.hparams.decoder == 'nequip_v2':
-            self.decoder = NequipTableDecoder(model_version = 'nequip_v2')
+        if self.hparams.decoder == 'nequip_ee':             # Elemental one-hot embedding
+            self.decoder = NequipTableDecoder(model_version = 'nequip_ee')
+        elif self.hparams.decoder == 'nequip_pte':          # Periodic table embedding
+            self.decoder = NequipTableDecoder(model_version = 'nequip_pte')
         else:
             raise NotImplementedError
 
         # For property prediction.
         if self.hparams.predict_property:
-            self.fc_property = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
-                                         self.hparams.fc_num_layers, self.hparams.property_dim)
-        # Noise levels.
-        sigmas = torch.tensor(np.exp(np.linspace(
-            np.log(self.hparams.sigma_begin),
-            np.log(self.hparams.sigma_end),
-            self.hparams.num_noise_level)), dtype=torch.float32)
-        self.sigmas = nn.Parameter(sigmas, requires_grad=False)
+            self.fc_property = build_mlp(
+                self.hparams.latent_dim, 
+                self.hparams.hidden_dim,
+                self.hparams.fc_num_layers, 
+                self.hparams.property_dim,
+            )
+        
+    def forward(
+        self, 
+        batch,  
+        training,           # Necessary parameter for pytorch_lightning.
+    ):  
+        # Sample noise levels.
+        used_sigmas_per_structure = self.get_sigma(
+            sigma_begin=self.hparams.sigma_begin,
+            sigma_end=self.hparams.sigma_end,
+            num_noise_level=batch.num_atoms.size(0),
+            SDE_type='VE',
+            sampler='random',
+        ).to(self.device)
+        used_sigmas_per_atom = used_sigmas_per_structure\
+            .repeat_interleave(batch.num_atoms, dim=0)
+            
+        # Add noise to the cartesian coordinates.
+        cart_noises_per_atom = torch.randn_like(batch.frac_coords) \
+            * used_sigmas_per_atom[:, None]
+        cart_coords = frac_to_cart_coords(
+            frac_coords=batch.frac_coords, 
+            lengths=batch.lengths, 
+            angles=batch.angles, 
+            num_atoms=batch.num_atoms,
+        )
+        cart_coords = cart_coords + cart_noises_per_atom
 
-        # Obtain from datamodule.
-        self.lattice_scaler = lattice_scaler
-        self.scaler = None
+        pred_cart_coord_diff  = self.decoder(
+            pred_cart_coords=cart_coords, 
+            pred_atom_types=batch.atom_types, 
+            num_atoms=batch.num_atoms, 
+            lengths=batch.lengths, 
+            angles=batch.angles,
+        )
+        
+        # Compute loss.
+        coord_loss = self.coord_loss(
+            pred_cart_coord_diff, 
+            cart_coords, 
+            used_sigmas_per_atom, 
+            batch,
+        )
+
+        return {
+            'coord_loss': coord_loss,
+            'pred_cart_coord_diff': pred_cart_coord_diff,
+            'target_frac_coords': batch.frac_coords,
+            'target_atom_types': batch.atom_types,
+        }
 
     def langevin_dynamics(
         self, 
@@ -139,12 +183,28 @@ class CHGGen(BaseModule):
             angles (tensor): lattice angles of shape (batch_size, 3).
             composition(tensor): composition of shape (batch_size, num_atom_per_structure).
             ld_kwargs (SimpleNameSpace): arguments for annealed langevin dynamics sampling:
+                sigma_begin (float, optional): initial sigma to use in annealed langevin dynamics.
+                sigma_end (float, optional): final sigma to use in annealed langevin dynamics.
+                num_noise_level (int): number of noise level.
                 n_step_each (int): number of steps for each sigma level.
                 min_sigma (float): minimum sigma to use in annealed langevin dynamics.
                 save_traj (bool): if <True>, save the entire LD trajectory.
                 disable_bar (bool): disable the progress bar of langevin dynamics.
         """
-
+        sigma_begin = ld_kwargs.sigma_begin if hasattr(ld_kwargs, 'sigma_begin') \
+            else self.hparams.sigma_begin
+        sigma_end = ld_kwargs.sigma_end if hasattr(ld_kwargs, 'sigma_end') \
+            else self.hparams.sigma_end
+        
+        # Sample noise levels.
+        sigmas = self.get_sigma(
+            sigma_begin=sigma_begin,
+            sigma_end=sigma_end,
+            num_noise_level=ld_kwargs.num_noise_level,
+            SDE_type='VE',
+            sampler='uniform',
+        ).to(self.device)
+        
         if ld_kwargs.save_traj:
             all_frac_coords = []
             all_pred_cart_coord_diff = []
@@ -158,7 +218,7 @@ class CHGGen(BaseModule):
         cur_atom_types = composition.view(-1)
 
         # Loop over noise levels.
-        for (step_size, sigma) in tqdm(zip(self.sigmas[:-1]**2-self.sigmas[1:]**2, self.sigmas[:-1]), total=self.sigmas.size(0)-1, disable=ld_kwargs.disable_bar):
+        for (step_size, sigma) in tqdm(zip(sigmas[:-1]**2-sigmas[1:]**2, sigmas[:-1]), total=sigmas.size(0)-1, disable=ld_kwargs.disable_bar):
             
             # Predictor
             cur_cart_coords = frac_to_cart_coords(
@@ -180,7 +240,10 @@ class CHGGen(BaseModule):
             pred_cart_coord_diff = pred_cart_coord_diff / sigma
             
             # Compute noise term
-            noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(step_size)
+            # NOTE: Ancester sampling
+            sigma_large = sigma
+            sigma_small = torch.sqrt(sigma**2-step_size)
+            noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(step_size) * sigma_small / sigma_large
             
             # Update
             cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart
@@ -236,8 +299,11 @@ class CHGGen(BaseModule):
                 all_noise_cart.append(noise_cart)
                 all_atom_types.append(cur_atom_types)
         
-        output_dict = {'num_atoms': num_atoms, 'lengths': lengths, 'angles': angles,
-                       'frac_coords': cur_frac_coords, 'atom_types': cur_atom_types,
+        output_dict = {'num_atoms': num_atoms, 
+                       'lengths': lengths, 
+                       'angles': angles,
+                       'frac_coords': cur_frac_coords, 
+                       'atom_types': cur_atom_types,
                        'is_traj': False}
 
         if ld_kwargs.save_traj:
@@ -271,21 +337,38 @@ class CHGGen(BaseModule):
             ori_frac_coords (tensor): fractional coordinates for framework of shape (num_atom, 3).
             mask (tensor): mask of inpainting atoms on ori_frac_coords(num_atom, 1).
             ld_kwargs (SimpleNameSpace): arguments for annealed langevin dynamics sampling:
+                sigma_begin (float, optional): initial sigma to use in annealed langevin dynamics.
+                sigma_end (float, optional): final sigma to use in annealed langevin dynamics.
+                num_noise_level (int): number of noise level.
                 n_step_each (int): number of steps for each sigma level.
                 min_sigma (float): minimum sigma to use in annealed langevin dynamics.
                 save_traj (bool): if <True>, save the entire LD trajectory.
                 disable_bar (bool): disable the progress bar of langevin dynamics.
         """
+        sigma_begin = ld_kwargs.sigma_begin if hasattr(ld_kwargs, 'sigma_begin') \
+            else self.hparams.sigma_begin
+        sigma_end = ld_kwargs.sigma_end if hasattr(ld_kwargs, 'sigma_end') \
+            else self.hparams.sigma_end
+        
+        # Sample noise levels.
+        sigmas = self.get_sigma(
+            sigma_begin=sigma_begin,
+            sigma_end=sigma_end,
+            num_noise_level=ld_kwargs.num_noise_level,
+            SDE_type='VE',
+            sampler='uniform',
+        ).to(self.device)
+        
         if ld_kwargs.save_traj:
             all_frac_coords = []
             all_atom_types = []
         
-        times = self.get_scheduler(t_T=self.sigmas.size(0))[:-1]  # -1 is the end term.
+        times = self.get_scheduler(t_T=sigmas.size(0))[:-1]     # -1 is the end term.
         
         # Revert sigmas and step_size to accomodate the scheduler.
-        step_sizes = self.sigmas[:-1]**2 - self.sigmas[1:]**2
+        step_sizes = sigmas[:-1]**2 - sigmas[1:]**2
         step_sizes = torch.flip(step_sizes, dims=(0,))          # Increasing step size.
-        sigmas = torch.flip(self.sigmas[:-1], dims=(0,))        # Increasing noise level.
+        sigmas = torch.flip(sigmas[:-1], dims=(0,))             # Increasing noise level.
         
         # Langevin dynamics.
         
@@ -325,8 +408,10 @@ class CHGGen(BaseModule):
                 pred_cart_coord_diff = pred_cart_coord_diff / sigmas[t_cur]
                 
                 # Compute noise term
-                
-                noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(step_sizes[t_cur])   # Backward cart coords noise
+                # NOTE: Ancester sampling
+                sigma_large = sigmas[t_cur]
+                sigma_small = torch.sqrt(sigmas[t_cur]**2-step_sizes[t_cur])
+                noise_cart = torch.randn_like(cur_cart_coords) * torch.sqrt(step_sizes[t_cur]) * sigma_small / sigma_large   # Backward cart coords noise
     
                 # Update
                 cur_cart_coords = cur_cart_coords + step_sizes[t_cur] * pred_cart_coord_diff + noise_cart
@@ -422,8 +507,11 @@ class CHGGen(BaseModule):
                     num_atoms=num_atoms,
                 )
         
-        output_dict = {'num_atoms': num_atoms, 'lengths': lengths, 'angles': angles,
-                       'frac_coords': cur_frac_coords, 'atom_types': cur_atom_types,
+        output_dict = {'num_atoms': num_atoms, 
+                       'lengths': lengths, 
+                       'angles': angles,
+                       'frac_coords': cur_frac_coords, 
+                       'atom_types': cur_atom_types,
                        'is_traj': False}
         
         if ld_kwargs.save_traj:
@@ -457,6 +545,46 @@ class CHGGen(BaseModule):
                     ts.append(t) 
         ts.append(-1)
         return ts
+    
+    @staticmethod
+    def get_sigma(
+        sigma_begin: float,
+        sigma_end: float,
+        num_noise_level: int,
+        SDE_type: str = 'VE',
+        sampler: str = 'uniform',
+    ) -> torch.Tensor:
+        """Get uniformly changed sigmas for sampling with variance
+            exploding or preserving method.
+        
+        Args:
+            sigma_begin (float): The initial value of sigma.
+            sigma_end (float): The final value of sigma.
+            num_noise_level (int): The number of noise level.
+            SDE_type (str, optional): The type of SDE. It can be 'VE'
+                Defaults to 'VE'.
+            sampler (str, optional): The type of sampler. Choose 'uniform'
+                when sampling and 'random' when training.
+                Defaults to 'uniform'.
+        """
+        sigma_begin = torch.tensor(sigma_begin)
+        sigma_end = torch.tensor(sigma_end)
+        
+        if SDE_type == 'VE':      # Variance exploding
+            scaled_begin = torch.log(sigma_begin)
+            scaled_end = torch.log(sigma_end)
+            if sampler == 'uniform':
+                
+                sigmas = torch.exp(
+                    torch.linspace(scaled_begin, scaled_end, num_noise_level), 
+                )
+            elif sampler == 'random':
+                sigmas = torch.exp(
+                    torch.rand(num_noise_level) * (scaled_begin - scaled_end) + scaled_end,
+                )
+        else:
+            raise NotImplementedError(f"SDE type {SDE_type} not implemented.")
+        return sigmas
         
     def sample(
         self, 
@@ -482,56 +610,6 @@ class CHGGen(BaseModule):
             ld_kwargs=ld_kwargs,
         )
         return results
-
-    def forward(
-        self, 
-        batch,  
-        training,           # Necessary parameter for pytorch_lightning.
-    ):  
-        
-        # Sample noise levels.
-        noise_level = torch.randint(
-            low=0, 
-            high=self.sigmas.size(0), 
-            size=(batch.num_atoms.size(0),),
-            device=self.device,
-        )
-        used_sigmas_per_atom = self.sigmas[noise_level]\
-            .repeat_interleave(batch.num_atoms, dim=0)
-            
-        # Add noise to the cartesian coordinates.
-        cart_noises_per_atom = torch.randn_like(batch.frac_coords) \
-            * used_sigmas_per_atom[:, None]
-        cart_coords = frac_to_cart_coords(
-            frac_coords=batch.frac_coords, 
-            lengths=batch.lengths, 
-            angles=batch.angles, 
-            num_atoms=batch.num_atoms,
-        )
-        cart_coords = cart_coords + cart_noises_per_atom
-
-        pred_cart_coord_diff  = self.decoder(
-            pred_cart_coords=cart_coords, 
-            pred_atom_types=batch.atom_types, 
-            num_atoms=batch.num_atoms, 
-            lengths=batch.lengths, 
-            angles=batch.angles,
-        )
-        
-        # Compute loss.
-        coord_loss = self.coord_loss(
-            pred_cart_coord_diff, 
-            cart_coords, 
-            used_sigmas_per_atom, 
-            batch,
-        )
-
-        return {
-            'coord_loss': coord_loss,
-            'pred_cart_coord_diff': pred_cart_coord_diff,
-            'target_frac_coords': batch.frac_coords,
-            'target_atom_types': batch.atom_types,
-        }
 
     def sample_composition(self, composition_prob, num_atoms):
         """Sample composition such that it exactly satisfies composition_prob"""
@@ -609,8 +687,6 @@ class CHGGen(BaseModule):
         return scatter(loss_per_atom, batch.batch, reduce='mean').mean()
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        teacher_forcing = (
-            self.current_epoch <= self.hparams.teacher_forcing_max_epoch)
         outputs = self(batch, training=True)
         log_dict, loss = self.compute_stats(batch, outputs, prefix='train')
         self.log_dict(
