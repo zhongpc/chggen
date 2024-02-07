@@ -85,23 +85,28 @@ class BaseModule(pl.LightningModule):
 class CHGGen(BaseModule):
     def __init__(
             self, 
-            hparams_dict = {
-                'latent_dim': 256, 'hidden_dim': 128, 
-                'property_dim': 1, 'fc_num_layers': 2, 
-                'sigma_begin': 10.0, 'sigma_end': 0.01,
-                'predict_property': False, 'num_noise_level': 50, 
-                'cost_coord': 10.0, 'cost_property': 1.0,
-                'beta': 0.01,
-                'decoder': 'nequip_pte',
-                'irreps_node_x': '32x0e', 'irreps_node_z': '32x0e', 'irreps_hidden': '32x0e + 32x1e + 8x2e', 'irreps_edge': '32x0e + 32x1e + 8x2e', 'irreps_out': '1x1e',
-                'num_convs': 5, 'radial_neurons': [16, 64],
-                'lr': 1e-3,    
-            },
+            hparams_dict = {'lr': 1e-4},
             **kwargs,
         ) -> None:
         super().__init__()
+
+        default_hyperparameters =  {'latent_dim': 256, 'hidden_dim': 128, 
+                                    'property_dim': 1, 'fc_num_layers': 2, 
+                                    'sigma_begin': 10.0, 'sigma_end': 0.01,
+                                    'predict_property': False, 'num_noise_level': 50, 
+                                    'cost_coord': 10.0, 'cost_property': 1.0,
+                                    'beta': 0.01,
+                                    'decoder': 'nequip_pte',
+                                    'irreps_node_x': '32x0e', 'irreps_node_z': '32x0e', 'irreps_hidden': '32x0e + 32x1e + 8x2e', 'irreps_edge': '32x0e + 32x1e + 8x2e', 'irreps_out': '1x1e',
+                                    'num_convs': 5, 'radial_neurons': [16, 64],
+                                    'lr': 1e-3,    
+                                }
+
+        default_hyperparameters.update(hparams_dict)
+
+        print(default_hyperparameters)
         
-        self.save_hyperparameters(hparams_dict)
+        self.save_hyperparameters(default_hyperparameters)
 
         # Initialize decoder.
         if self.hparams.decoder == 'nequip_ee':             # Elemental one-hot embedding
