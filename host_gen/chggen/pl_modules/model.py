@@ -92,7 +92,9 @@ class CHGGen(BaseModule):
                 'predict_property': False, 'num_noise_level': 50, 
                 'cost_coord': 10.0, 'cost_property': 1.0,
                 'beta': 0.01,
-                'decoder': 'nequip',
+                'decoder': 'nequip_pte',
+                'irreps_node_x': '32x0e', 'irreps_node_z': '32x0e', 'irreps_hidden': '32x0e + 32x1e + 8x2e', 'irreps_edge': '32x0e + 32x1e + 8x2e', 'irreps_out': '1x1e',
+                'num_convs': 5, 'radial_neurons': [16, 64],
                 'lr': 1e-3,    
             },
             **kwargs,
@@ -103,10 +105,21 @@ class CHGGen(BaseModule):
 
         # Initialize decoder.
         if self.hparams.decoder == 'nequip_ee':             # Elemental one-hot embedding
-            self.decoder = NequipTableDecoder(model_version = 'nequip_ee')
+            self.decoder = NequipTableDecoder(model_version = 'nequip_ee',  irreps_node_x  = self.hparams.irreps_node_x,
+                                                                            irreps_node_z  = self.hparams.irreps_node_z,
+                                                                            irreps_hidden  = self.hparams.irreps_hidden,
+                                                                            irreps_edge    = self.hparams.irreps_edge,
+                                                                            irreps_out     = self.hparams.irreps_out,
+                                                                            num_convs      = self.hparams.num_convs,
+                                                                            radial_neurons = self.hparams.radial_neurons)
         elif self.hparams.decoder == 'nequip_pte':          # Periodic table embedding
-            self.decoder = NequipTableDecoder(model_version = 'nequip_pte')
-        else:
+            self.decoder = NequipTableDecoder(model_version = 'nequip_pte', irreps_node_x  = self.hparams.irreps_node_x,
+                                                                            irreps_node_z  = self.hparams.irreps_node_z,
+                                                                            irreps_hidden  = self.hparams.irreps_hidden,
+                                                                            irreps_edge    = self.hparams.irreps_edge,
+                                                                            irreps_out     = self.hparams.irreps_out,
+                                                                            num_convs      = self.hparams.num_convs,
+                                                                            radial_neurons = self.hparams.radial_neurons)
             raise NotImplementedError
 
         # For property prediction.
