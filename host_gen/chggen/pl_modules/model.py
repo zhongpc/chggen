@@ -125,6 +125,7 @@ class CHGGen(BaseModule):
                                                                             irreps_out     = self.hparams.irreps_out,
                                                                             num_convs      = self.hparams.num_convs,
                                                                             radial_neurons = self.hparams.radial_neurons)
+        else:
             raise NotImplementedError
 
         # For property prediction.
