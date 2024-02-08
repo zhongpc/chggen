@@ -27,6 +27,14 @@ class NequipTableDecoder(nn.Module):
         max_neighbors = 40,
         cutoff = 6.,
         model_version = 'nequip_pte',
+        irreps_node_x  = '32x0e',
+        irreps_node_z  = '32x0e',
+        irreps_hidden  = '32x0e + 32x1e + 8x2e',
+        irreps_edge    = '32x0e + 32x1e + 8x2e',
+        irreps_out     = '1x1e',
+        num_convs      = 5,
+        radial_neurons = [16, 64],
+        
     ):
         super(NequipTableDecoder, self).__init__()
         self.cutoff = cutoff
@@ -35,26 +43,26 @@ class NequipTableDecoder(nn.Module):
         if model_version == 'nequip_pte':       # Periodic table embedding
             self.nequip = NequIP_PTE(
                 init_embed = InitialEmbedding_PTE(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim=32),
-                irreps_node_x  = '32x0e',
-                irreps_node_z  = '32x0e',
-                irreps_hidden  = '32x0e + 32x1e + 8x2e',
-                irreps_edge    = '32x0e + 32x1e + 8x2e',
-                irreps_out     = '1x1e',
-                num_convs      = 5,
-                radial_neurons = [16, 64],
+                irreps_node_x  = irreps_node_x,
+                irreps_node_z  = irreps_node_z,
+                irreps_hidden  = irreps_hidden,
+                irreps_edge    = irreps_edge,
+                irreps_out     = irreps_out,
+                num_convs      = num_convs ,
+                radial_neurons = radial_neurons,
                 num_neighbors  = self.max_num_neighbors / 2,
             )
             
         elif model_version == 'nequip_ee':      # Element embedding
             self.nequip = NequIP_EE(
                 init_embed = InitialEmbedding_EE(num_species=89, cutoff=cutoff, emb_dim=32),
-                irreps_node_x  = '32x0e',
-                irreps_node_z  = '32x0e',
-                irreps_hidden  = '32x0e + 32x1e + 8x2e',
-                irreps_edge    = '32x0e + 32x1e + 8x2e',
-                irreps_out     = '1x1e',
-                num_convs      = 5,
-                radial_neurons = [16, 64],
+                irreps_node_x  = irreps_node_x,
+                irreps_node_z  = irreps_node_z,
+                irreps_hidden  = irreps_hidden,
+                irreps_edge    = irreps_edge,
+                irreps_out     = irreps_out,
+                num_convs      = num_convs ,
+                radial_neurons = radial_neurons,
                 num_neighbors  = self.max_num_neighbors / 2,
             )
             
