@@ -109,7 +109,7 @@ class NequIP_EE(nn.Module):
 
 
 
-class NequIP_PTE_plus(nn.Module):
+class NequIP_PTE_only(nn.Module):
     """NequIP model from https://arxiv.org/pdf/2101.03164.pdf.
         Periodic table embedding version with message passing between
         period and group nodes.
@@ -180,57 +180,38 @@ class NequIP_PTE_plus(nn.Module):
             irreps_gates = o3.Irreps([(mul, ir) for mul, _ in irreps_gated]).simplify()
 
 
-            if ii < (num_convs//2 + 1):
-                gate_period = Gate(
-                    irreps_scalars, [act_scalars[ir.p] for _, ir in irreps_scalars],  # scalar
-                    irreps_gates,   [act_gates[ir.p]   for _, ir in irreps_gates],  # gates (scalars)
-                    irreps_gated  # gated tensors
-                )
-    
-                gate_group = Gate(
-                    irreps_scalars, [act_scalars[ir.p] for _, ir in irreps_scalars],  # scalar
-                    irreps_gates,   [act_gates[ir.p]   for _, ir in irreps_gates],  # gates (scalars)
-                    irreps_gated  # gated tensors
-                )
-    
-                conv_period = Interaction(
-                    irreps_in      = irreps,
-                    irreps_node    = self.irreps_node_z,
-                    irreps_edge    = self.irreps_edge,
-                    irreps_out     = gate_period.irreps_in,
-                    radial_neurons = radial_neurons,
-                    num_neighbors  = num_neighbors,   # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
-                )
-                
-                conv_group = Interaction(
-                    irreps_in      = irreps,
-                    irreps_node    = self.irreps_node_z,
-                    irreps_edge    = self.irreps_edge,
-                    irreps_out     = gate_group.irreps_in,
-                    radial_neurons = radial_neurons,
-                    num_neighbors  = num_neighbors,   # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
-                )
-                            
-                self.interactions_period.append(Compose(conv_period, gate_period))
-                self.interactions_group.append(Compose(conv_group, gate_group))
+            gate_period = Gate(
+                irreps_scalars, [act_scalars[ir.p] for _, ir in irreps_scalars],  # scalar
+                irreps_gates,   [act_gates[ir.p]   for _, ir in irreps_gates],  # gates (scalars)
+                irreps_gated  # gated tensors
+            )
 
-            else:
-                gate_combine = Gate(
-                    irreps_scalars, [act_scalars[ir.p] for _, ir in irreps_scalars],  # scalar
-                    irreps_gates,   [act_gates[ir.p]   for _, ir in irreps_gates],  # gates (scalars)
-                    irreps_gated  # gated tensors
-                )
-    
-                conv_combine = Interaction(
-                    irreps_in      = irreps,
-                    irreps_node    = self.irreps_node_z,
-                    irreps_edge    = self.irreps_edge,
-                    irreps_out     = gate_period.irreps_in,
-                    radial_neurons = radial_neurons,
-                    num_neighbors  = num_neighbors,   # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
-                )
+            gate_group = Gate(
+                irreps_scalars, [act_scalars[ir.p] for _, ir in irreps_scalars],  # scalar
+                irreps_gates,   [act_gates[ir.p]   for _, ir in irreps_gates],  # gates (scalars)
+                irreps_gated  # gated tensors
+            )
 
-                self.interactions_combine.append(Compose(conv_combine, gate_combine))
+            conv_period = Interaction(
+                irreps_in      = irreps,
+                irreps_node    = self.irreps_node_z,
+                irreps_edge    = self.irreps_edge,
+                irreps_out     = gate_period.irreps_in,
+                radial_neurons = radial_neurons,
+                num_neighbors  = num_neighbors,   # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
+            )
+            
+            conv_group = Interaction(
+                irreps_in      = irreps,
+                irreps_node    = self.irreps_node_z,
+                irreps_edge    = self.irreps_edge,
+                irreps_out     = gate_group.irreps_in,
+                radial_neurons = radial_neurons,
+                num_neighbors  = num_neighbors,   # layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
+            )
+                        
+            self.interactions_period.append(Compose(conv_period, gate_period))
+            self.interactions_group.append(Compose(conv_group, gate_group))
                 
             irreps = gate_period.irreps_out
         
@@ -255,16 +236,11 @@ class NequIP_PTE_plus(nn.Module):
             h_node_x_period = layer_period(h_node_x_period, h_node_z_period, edge_index, edge_sh, h_edge)
         for layer_group in self.interactions_group:        
             h_node_x_group = layer_group(h_node_x_group, h_node_z_group, edge_index, edge_sh, h_edge)
-
         
         # Mix the two outputs.
         h_node_x = h_node_x_period + h_node_x_group
         h_node_z = h_node_z_period + h_node_z_group
 
-        # Combined message passing
-        for layer_combine in self.interactions_combine: 
-            h_node_x = layer_combine(h_node_x, h_node_z, edge_index, edge_sh, h_edge)        
-        
         # Final output layer
         return self.out(h_node_x, h_node_z)
 
