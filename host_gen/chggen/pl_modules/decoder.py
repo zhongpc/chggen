@@ -54,8 +54,8 @@ class NequipTableDecoder(nn.Module):
             )
 
         elif model_version == 'nequip_pte_only':      # Element embedding
-            self.nequip = NequIP_EE(
-                init_embed = InitialEmbedding_PTE_only(num_species=89, cutoff=cutoff, emb_dim=32),
+            self.nequip = NequIP_PTE(
+                init_embed = InitialEmbedding_PTE_only(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim=32),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
                 irreps_hidden  = irreps_hidden,
