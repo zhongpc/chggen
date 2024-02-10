@@ -41,7 +41,7 @@ class NequipTableDecoder(nn.Module):
         self.max_num_neighbors = max_neighbors
 
         if model_version == 'nequip_pte':       # Periodic table embedding
-            self.nequip = NequIP_PTE_only(
+            self.nequip = NequIP_PTE(
                 init_embed = InitialEmbedding_PTE(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim=32),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
@@ -54,7 +54,7 @@ class NequipTableDecoder(nn.Module):
             )
 
         elif model_version == 'nequip_pte_only':      # Element embedding
-            self.nequip = NequIP_PTE(
+            self.nequip = NequIP_PTE_only(
                 init_embed = InitialEmbedding_PTE(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim=32),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
