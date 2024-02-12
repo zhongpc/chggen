@@ -134,6 +134,15 @@ class CHGGen(BaseModule):
                                                                             irreps_out     = self.hparams.irreps_out,
                                                                             num_convs      = self.hparams.num_convs,
                                                                             radial_neurons = self.hparams.radial_neurons)
+
+        elif self.hparams.decoder == 'nequip_pteres':          # Periodic table embedding
+            self.decoder = NequipTableDecoder(model_version = 'nequip_pteres', irreps_node_x  = self.hparams.irreps_node_x,
+                                                                            irreps_node_z  = self.hparams.irreps_node_z,
+                                                                            irreps_hidden  = self.hparams.irreps_hidden,
+                                                                            irreps_edge    = self.hparams.irreps_edge,
+                                                                            irreps_out     = self.hparams.irreps_out,
+                                                                            num_convs      = self.hparams.num_convs,
+                                                                            radial_neurons = self.hparams.radial_neurons)
             
         else:
             raise NotImplementedError
