@@ -5,6 +5,7 @@ from e3nn       import o3
 from e3nn.nn    import Gate
 
 from .e3nn_nequip_interaction import Interaction
+
     
 
 class NequIP_EE(nn.Module):
@@ -342,19 +343,19 @@ class NequIP_PTERes(nn.Module):
         # Embedding
         data = self.init_embed(data)
         edge_index, edge_attr = data.edge_index, data.edge_attr
-        _, h_node_z_period = data.h_node_x_period, data.h_node_z_period
+        h_node_x_period, h_node_z_period = data.h_node_x_period, data.h_node_z_period
         h_node_x_group, h_node_z_group = data.h_node_x_group, data.h_node_z_group
         h_edge = data.h_edge
            
         
         # Graph convolutions
-        edge_sh = o3.spherical_harmonics(self.irreps_edge, edge_attr, normalize=True, normalization='component'
+        edge_sh = o3.spherical_harmonics(self.irreps_edge, edge_attr, normalize=True, normalization='component')
         for layer_group in self.interactions_group:        
             h_node_x_group = layer_group(h_node_x_group, h_node_z_group, edge_index, edge_sh, h_edge)
         
 
         # Final output layer
-        return self.out(h_node_x, h_node_z)
+        return self.out(h_node_x_group, h_node_z_period)
 
 
 class NequIP_PTE(nn.Module):
