@@ -37,7 +37,7 @@ def get_data(df, num, device):
     
     # Add atom types and atom masks for inserted ions.
     cur_atom_types += [insert_ion.Z] * num_insert_ion
-    cur_atom_types = torch.tensor(cur_atom_types, device = device, dtype = torch.float32)
+    cur_atom_types = torch.tensor(cur_atom_types, device = device, dtype = torch.int32)
     atom_masks += [1] * num_insert_ion
     atom_masks = torch.tensor(atom_masks, device = device).bool()
     
@@ -48,7 +48,7 @@ def get_data(df, num, device):
     cur_frac_coords = torch.tensor(cur_frac_coords, dtype = torch.float32)
 
     # Cell information.
-    num_atoms = torch.tensor([len(cur_atom_types)], device = device)
+    num_atoms = torch.tensor([len(cur_atom_types)], device = device, dtype=torch.int32)
     angles = torch.tensor([s0.lattice.angles], device = device)
     lengths = torch.tensor([s0.lattice.lengths], device = device)
     

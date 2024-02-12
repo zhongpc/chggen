@@ -20,10 +20,10 @@ from aux_funcs_inpaint import get_batch_data
 device = 'cuda:6'
 
 # Load pre-trained model.
-chggen = CHGGen.load_from_checkpoint('../../gen_org/data/test_models/mp/epoch=9.ckpt', strict=False, map_location=device)
+chggen = CHGGen.load_from_checkpoint('../../gen_org/data/test_models/mp_pretrain_pte/mp_pretrain_trainer.ckpt', strict=False, map_location=device)
 
 # Load csv data.
-data_inpaint = pd.read_csv('../data/dataset/data_inpaint.csv', keep_default_na=False, na_values=[''])
+data_inpaint = pd.read_csv('../data/dataset/data_inpaint_Li.csv', keep_default_na=False, na_values=[''])
 data_inpaint_new = data_inpaint.copy()
 data_inpaint_new['cif_inpaint'] = ''
 
@@ -35,6 +35,9 @@ ptr = np.append(ptr, num_total) if ptr[-1] != num_total else ptr
 
 # Sampling.
 ld_kwargs = SimpleNamespace(
+    sigma_begin = 10.0,
+    sigma_end = 0.01,
+    num_noise_level = 200,
     n_step_each = 5,            # Corrector
     min_sigma = 0,
     signal_to_noise_ratio = 0.4,

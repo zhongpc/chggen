@@ -64,14 +64,14 @@ def get_data(df, num, device):
     cur_atom_types = []
     for site in s0.sites:
         cur_atom_types.append(site.specie.Z)
-    cur_atom_types = torch.tensor(cur_atom_types, device = device, dtype = torch.float32)
+    cur_atom_types = torch.tensor(cur_atom_types, device = device, dtype = torch.int32)
     
     # Add random coordinates for host and inserted ions.
     cur_frac_coords = torch.rand(len(cur_atom_types), 3, requires_grad = False, device = device, dtype = torch.float32)
     cur_frac_coords = torch.tensor(cur_frac_coords, dtype = torch.float32)
 
     # Cell information.
-    num_atoms = torch.tensor([len(cur_atom_types)], device = device)
+    num_atoms = torch.tensor([len(cur_atom_types)], device = device, dtype = torch.int32)
     angles = torch.tensor([s0.lattice.angles], device = device)
     lengths = torch.tensor([s0.lattice.lengths], device = device)
     
