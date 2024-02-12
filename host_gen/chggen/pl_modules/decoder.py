@@ -8,7 +8,7 @@ from chggen.common.data_utils import (
     radius_graph_pbc,
 )
 from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding_PTE, InitialEmbedding_EE
-from chggen.pl_modules.nequip.e3nn_nequip import NequIP_PTE, NequIP_PTE_only, NequIP_EE
+from chggen.pl_modules.nequip.e3nn_nequip import NequIP_PTE, NequIP_PTERes, NequIP_PTE_only, NequIP_EE
 
 
 
@@ -55,6 +55,19 @@ class NequipTableDecoder(nn.Module):
 
         elif model_version == 'nequip_pte_only':      # Element embedding
             self.nequip = NequIP_PTE_only(
+                init_embed = InitialEmbedding_PTE(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim=32),
+                irreps_node_x  = irreps_node_x,
+                irreps_node_z  = irreps_node_z,
+                irreps_hidden  = irreps_hidden,
+                irreps_edge    = irreps_edge,
+                irreps_out     = irreps_out,
+                num_convs      = num_convs ,
+                radial_neurons = radial_neurons,
+                num_neighbors  = self.max_num_neighbors / 2,
+            )
+            
+        elif model_version == 'nequip_pteres':      # Element embedding
+            self.nequip = NequIP_PTERes(
                 init_embed = InitialEmbedding_PTE(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim=32),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
