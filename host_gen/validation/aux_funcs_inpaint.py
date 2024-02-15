@@ -24,10 +24,10 @@ from pymatgen.io.cif import CifWriter
 
 
 
-def get_data(df, num, device):
+def get_data(df, num, device, ion = 'Li'):
     s0 = Structure.from_str(df['cif'][num], fmt='cif', frac_tolerance=0, site_tolerance=0)
     num_insert_ion = df['num_insert_ion'][num]
-    insert_ion = Element('Li')
+    insert_ion = Element(ion)
     
     cur_atom_types = []
     atom_masks = []
@@ -55,9 +55,9 @@ def get_data(df, num, device):
     return cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths
 
 # Construct dataloader
-def get_batch_data(df, id_start, id_end, device):
+def get_batch_data(df, id_start, id_end, device, ion = 'Li'):
     cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths = \
-        zip(*[get_data(df, i, device) for i in range(id_start, id_end)])
+        zip(*[get_data(df, i, device, ion = ion) for i in range(id_start, id_end)])
 
     # Construct batch data
     cur_atom_types = torch.cat(cur_atom_types, axis = 0)
