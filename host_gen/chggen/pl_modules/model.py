@@ -54,6 +54,7 @@ class BaseModule(pl.LightningModule):
     
     def configure_optimizers(self, use_lr_scheduler = True):
         opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+        use_lr_scheduler = self.hparams.use_lr_scheduler
         if not use_lr_scheduler:
             return [opt]
         
@@ -100,6 +101,7 @@ class CHGGen(BaseModule):
                                     'irreps_node_x': '32x0e', 'irreps_node_z': '32x0e', 'irreps_hidden': '32x0e + 32x1e + 8x2e', 'irreps_edge': '32x0e + 32x1e + 8x2e', 'irreps_out': '1x1e',
                                     'num_convs': 5, 'radial_neurons': [16, 64],
                                     'lr': 1e-3,    
+                                    'use_lr_scheduler': True,
                                 }
 
         default_hyperparameters.update(hparams_dict)
