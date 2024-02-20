@@ -64,7 +64,7 @@ class BaseModule(pl.LightningModule):
         warmup_step = 0.1 * total_step      # Number of steps for the warm-up (10% of total)
         
         eta_max = self.hparams.lr           # Maximum learning rate
-        eta_min = 1e-2 * self.hparams.lr    # Minimum learning rate (1% of max lr)
+        eta_min = self.hparams.lr_shrink * self.hparams.lr    # Minimum learning rate (1% of max lr)
 
         # Lambda function for linear warmup
         warmup_lambda = lambda step: step / warmup_step
@@ -100,7 +100,7 @@ class CHGGen(BaseModule):
                                     'decoder': 'nequip_pte',
                                     'irreps_node_x': '32x0e', 'irreps_node_z': '32x0e', 'irreps_hidden': '32x0e + 32x1e + 8x2e', 'irreps_edge': '32x0e + 32x1e + 8x2e', 'irreps_out': '1x1e',
                                     'num_convs': 5, 'radial_neurons': [16, 64],
-                                    'lr': 1e-3,    
+                                    'lr': 1e-3, 'lr_shrink': 0.1, 
                                     'use_lr_scheduler': True,
                                 }
 
