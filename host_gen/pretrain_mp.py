@@ -8,7 +8,7 @@ from chggen.pl_modules.model import CHGGen
 
 
 
-mkdir("./data/test_models/mp_pretrain/")
+mkdir("./data/test_models/mp_pretrain_con/")
 
 # Initialize dataset.
 train_dataset = CHGNetDataset(
@@ -40,8 +40,12 @@ model_hparams ={'latent_dim': 64,           # Model dimension.
                 'sigma_end': 0.001,    
                 'cost_coord': 1.0,          # Loss weight.
                 'cost_property': 0,
-                'decoder': 'nequip_ee',    # Decoder type.: 'nequip_ee': element embedding or 'nequip_pte' periodic table embedding
+                'decoder': 'nequip_ee',     # Decoder type.
+                'irreps_hidden': '32x0e + 32x1e',
+                'num_convs': 4,             # Number of convolutional layers.
                 'lr': 1e-3,                 
+                'lr_scheduler': None,       # Learning rate scheduler.
+                'lr_shrink': 0.01,          # Learning rate shrink.
                 'num_batch': len(datamodule.train_dataloader()),    # For warmup scheduler.
                 }
 
@@ -49,12 +53,12 @@ chggen = CHGGen(hparams_dict=model_hparams)
 
 # Define the checkpoint callback
 checkpoint_callback = ModelCheckpoint(
-    dirpath= './data/test_models/mp_pretrain/',
-    filename='{epoch}',         # Save the checkpoint after every epoch
-    save_top_k=-1,              # Set to -1 to save all checkpoints
-    save_last=True,             # Save the last model too, useful for resuming
-    every_n_train_steps = 5000, # Save every epoch (assuming you're validating every epoch)
-    verbose=False               # Print save messages for debugging
+    dirpath= './data/test_models/mp_pretrain_con/',
+    filename='{epoch}-{val_loss:.2f}',              # Save the checkpoint after every epoch
+    monitor='val_loss',                             # Monitor the validation loss
+    mode='min',                                     # Save the model with the minimum validation loss
+    save_top_k=1,                                   # Set to -1 to save all checkpoints
+    save_last=True,                                 # Save the last model too, useful for resuming
 )
 
 trainer = pl.Trainer(
@@ -63,12 +67,11 @@ trainer = pl.Trainer(
     max_epochs= 50,
     callbacks=[checkpoint_callback, TQDMProgressBar(refresh_rate = 1)],
     log_every_n_steps=100,
-    gradient_clip_val=0.5,
-    default_root_dir='./data/test_models/mp_pretrain/',
+    gradient_clip_val=0.1,
+    default_root_dir='./data/test_models/mp_pretrain_con/',
     # strategy = 'ddp_find_unused_parameters_true',  # multi-GPU training
 )
 
 trainer.fit(model= chggen, datamodule= datamodule)
 
-trainer.save_checkpoint("./data/test_models/mp_pretrain/trainer_mp_pretrain.ckpt")
 print("Done")
