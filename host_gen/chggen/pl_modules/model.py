@@ -52,7 +52,7 @@ class BaseModule(pl.LightningModule):
             warmup_step = 0.1 * total_step      # Number of steps for the warm-up (10% of total)
             
             eta_max = self.hparams.lr           # Maximum learning rate
-            eta_min = 1e-2 * self.hparams.lr    # Minimum learning rate (1% of max lr)
+            eta_min = self.hparams.lr_shrink * self.hparams.lr    # Minimum learning rate (1% of max lr)
 
             # Lambda function for linear warmup
             warmup_lambda = lambda step: step / warmup_step
@@ -77,7 +77,7 @@ class BaseModule(pl.LightningModule):
                 mode='min',
                 factor=.6,
                 patience=5,
-                min_lr=self.hparams.lr / 1e2,
+                min_lr=self.hparams.lr * self.hparams.lr_shrink,
             )
             return {
                 "optimizer": opt, 
@@ -115,6 +115,7 @@ class CHGGen(BaseModule):
             'radial_neurons': [16,64],
             'lr': 1e-3,
             'lr_scheduler': None,
+            'lr_shrink': 0.01,
         }
         default_hyperparameters.update(hparams_dict)
         
