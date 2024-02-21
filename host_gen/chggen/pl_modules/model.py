@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, ReduceLROnPlateau
 from torch_scatter import scatter
 import pytorch_lightning as pl
 
@@ -15,7 +15,7 @@ from chggen.common.data_utils import (
     frac_to_cart_coords, 
     min_distance_sqr_pbc,
 )
-from chggen.pl_modules.decoder import NequipTableDecoder
+from chggen.pl_modules.decoder import NequipTableDecoder, GemNetTDecoder
 
 
 
@@ -38,113 +38,115 @@ class BaseModule(pl.LightningModule):
         super().__init__()
         # populate self.hparams with args and kwargs automagically!
         self.save_hyperparameters()
-        
-    # def configure_optimizers(self, use_lr_scheduler = True):
-    #     opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
-    #     if not use_lr_scheduler:
-    #         return [opt]
-    #     scheduler = ExponentialLR(opt, gamma=0.95)
-    #     return {
-    #         "optimizer": opt, 
-    #         "lr_scheduler": {
-    #             "scheduler": scheduler,
-    #             "monitor": "val_loss",
-    #         }
-    #     }
     
-    def configure_optimizers(self, use_lr_scheduler = True):
+    def configure_optimizers(self):
         opt = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
-        use_lr_scheduler = self.hparams.use_lr_scheduler
-        if not use_lr_scheduler:
+        
+        if self.hparams.lr_scheduler is None:
             return [opt]
         
-        num_epoch = self.trainer.max_epochs
-        num_batch = self.hparams.num_batch
-        total_step = num_epoch * num_batch  # Total number of training steps
-        warmup_step = 0.1 * total_step      # Number of steps for the warm-up (10% of total)
-        
-        eta_max = self.hparams.lr           # Maximum learning rate
-        eta_min = self.hparams.lr_shrink * self.hparams.lr    # Minimum learning rate (1% of max lr)
+        elif self.hparams.lr_scheduler in ['cos', 'cosine']:
+            num_epoch = self.trainer.max_epochs
+            num_batch = self.hparams.num_batch
+            total_step = num_epoch * num_batch  # Total number of training steps
+            warmup_step = 0.1 * total_step      # Number of steps for the warm-up (10% of total)
+            
+            eta_max = self.hparams.lr           # Maximum learning rate
+            eta_min = 1e-2 * self.hparams.lr    # Minimum learning rate (1% of max lr)
 
-        # Lambda function for linear warmup
-        warmup_lambda = lambda step: step / warmup_step
-        # Lambda function for cosine annealing after warmup
-        cosine_lambda = lambda step: (eta_min + 0.5 * (eta_max - eta_min) * (1 + np.cos(np.pi * (step - warmup_step) / (total_step - warmup_step)))) / self.hparams.lr
-        # Combined lambda function
-        combined_lambda = lambda step: cosine_lambda(step) if step >= warmup_step else warmup_lambda(step)
-        # Create the scheduler
-        scheduler = LambdaLR(opt, lr_lambda=combined_lambda)
-        return {
-            "optimizer": opt, 
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "interval": "step",  # or "epoch" depending on your preference
-                "frequency": 1,
+            # Lambda function for linear warmup
+            warmup_lambda = lambda step: step / warmup_step
+            # Lambda function for cosine annealing after warmup
+            cosine_lambda = lambda step: (eta_min + 0.5 * (eta_max - eta_min) * (1 + np.cos(np.pi * (step - warmup_step) / (total_step - warmup_step)))) / self.hparams.lr
+            # Combined lambda function
+            combined_lambda = lambda step: cosine_lambda(step) if step >= warmup_step else warmup_lambda(step)
+            # Create the scheduler
+            scheduler = LambdaLR(opt, lr_lambda=combined_lambda)
+            return {
+                "optimizer": opt, 
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "interval": "step",  # or "epoch" depending on your preference
+                    "frequency": 1,
+                }
             }
-        }
+        
+        elif self.hparams.lr_scheduler == 'exp_decay':
+            scheduler = ReduceLROnPlateau(
+                opt,
+                mode='min',
+                factor=.6,
+                patience=5,
+                min_lr=self.hparams.lr / 1e2,
+            )
+            return {
+                "optimizer": opt, 
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "monitor": "val_loss",
+                }
+            }
+        
+        else:
+            raise NotImplementedError
 
 class CHGGen(BaseModule):
     def __init__(
-            self, 
-            hparams_dict = {'lr': 1e-4},
+            self,
+            hparams_dict = {},
             **kwargs,
         ) -> None:
         super().__init__()
-
-        default_hyperparameters =  {'latent_dim': 256, 'hidden_dim': 128, 
-                                    'property_dim': 1, 'fc_num_layers': 2, 
-                                    'sigma_begin': 10.0, 'sigma_end': 0.01,
-                                    'predict_property': False, 'num_noise_level': 50, 
-                                    'cost_coord': 10.0, 'cost_property': 1.0,
-                                    'beta': 0.01,
-                                    'decoder': 'nequip_pte',
-                                    'irreps_node_x': '32x0e', 'irreps_node_z': '32x0e', 'irreps_hidden': '32x0e + 32x1e + 8x2e', 'irreps_edge': '32x0e + 32x1e + 8x2e', 'irreps_out': '1x1e',
-                                    'num_convs': 5, 'radial_neurons': [16, 64],
-                                    'lr': 1e-3, 'lr_shrink': 0.1, 
-                                    'use_lr_scheduler': True,
-                                }
-
+        
+        default_hyperparameters = {
+            'latent_dim': 256, 'hidden_dim': 128, 
+            'property_dim': 1, 'fc_num_layers': 2, 
+            'sigma_begin': 10.0, 'sigma_end': 0.01,
+            'predict_property': False, 'num_noise_level': 50, 
+            'cost_coord': 10.0, 'cost_property': 1.0,
+            'beta': 0.01,
+            'decoder': 'nequip_pte',
+            'irreps_node_x': '32x0e',
+            'irreps_node_z': '32x0e',
+            'irreps_hidden': '32x0e + 32x1e + 8x2e',
+            'irreps_edge': '32x0e + 32x1e + 8x2e',
+            'irreps_out': '1x1e',
+            'num_convs': 5,
+            'radial_neurons': [16,64],
+            'lr': 1e-3,
+            'lr_scheduler': None,
+        }
         default_hyperparameters.update(hparams_dict)
-
-        print(default_hyperparameters)
         
         self.save_hyperparameters(default_hyperparameters)
 
         # Initialize decoder.
         if self.hparams.decoder == 'nequip_ee':             # Elemental one-hot embedding
-            self.decoder = NequipTableDecoder(model_version = 'nequip_ee',  irreps_node_x  = self.hparams.irreps_node_x,
-                                                                            irreps_node_z  = self.hparams.irreps_node_z,
-                                                                            irreps_hidden  = self.hparams.irreps_hidden,
-                                                                            irreps_edge    = self.hparams.irreps_edge,
-                                                                            irreps_out     = self.hparams.irreps_out,
-                                                                            num_convs      = self.hparams.num_convs,
-                                                                            radial_neurons = self.hparams.radial_neurons)
+            self.decoder = NequipTableDecoder(
+                model_version = 'nequip_ee',
+                irreps_node_x  = self.hparams.irreps_node_x,
+                irreps_node_z  = self.hparams.irreps_node_z,
+                irreps_hidden  = self.hparams.irreps_hidden,
+                irreps_edge    = self.hparams.irreps_edge,
+                irreps_out     = self.hparams.irreps_out,
+                num_convs      = self.hparams.num_convs,
+                radial_neurons = self.hparams.radial_neurons,
+            )
+            
         elif self.hparams.decoder == 'nequip_pte':          # Periodic table embedding
-            self.decoder = NequipTableDecoder(model_version = 'nequip_pte', irreps_node_x  = self.hparams.irreps_node_x,
-                                                                            irreps_node_z  = self.hparams.irreps_node_z,
-                                                                            irreps_hidden  = self.hparams.irreps_hidden,
-                                                                            irreps_edge    = self.hparams.irreps_edge,
-                                                                            irreps_out     = self.hparams.irreps_out,
-                                                                            num_convs      = self.hparams.num_convs,
-                                                                            radial_neurons = self.hparams.radial_neurons)
-
-        elif self.hparams.decoder == 'nequip_pte_only':          # Periodic table embedding
-            self.decoder = NequipTableDecoder(model_version = 'nequip_pte_only', irreps_node_x  = self.hparams.irreps_node_x,
-                                                                            irreps_node_z  = self.hparams.irreps_node_z,
-                                                                            irreps_hidden  = self.hparams.irreps_hidden,
-                                                                            irreps_edge    = self.hparams.irreps_edge,
-                                                                            irreps_out     = self.hparams.irreps_out,
-                                                                            num_convs      = self.hparams.num_convs,
-                                                                            radial_neurons = self.hparams.radial_neurons)
-
-        elif self.hparams.decoder == 'nequip_pteres':          # Periodic table embedding
-            self.decoder = NequipTableDecoder(model_version = 'nequip_pteres', irreps_node_x  = self.hparams.irreps_node_x,
-                                                                            irreps_node_z  = self.hparams.irreps_node_z,
-                                                                            irreps_hidden  = self.hparams.irreps_hidden,
-                                                                            irreps_edge    = self.hparams.irreps_edge,
-                                                                            irreps_out     = self.hparams.irreps_out,
-                                                                            num_convs      = self.hparams.num_convs,
-                                                                            radial_neurons = self.hparams.radial_neurons)
+            self.decoder = NequipTableDecoder(
+                model_version = 'nequip_pte',
+                irreps_node_x  = self.hparams.irreps_node_x,
+                irreps_node_z  = self.hparams.irreps_node_z,
+                irreps_hidden  = self.hparams.irreps_hidden,
+                irreps_edge    = self.hparams.irreps_edge,
+                irreps_out     = self.hparams.irreps_out,
+                num_convs      = self.hparams.num_convs,
+                radial_neurons = self.hparams.radial_neurons,
+            )
+            
+        elif self.hparams.decoder == 'gemnet':              # Gemnet
+            self.decoder = GemNetTDecoder(self.hparams.hidden_dim, self.hparams.latent_dim)
             
         else:
             raise NotImplementedError
