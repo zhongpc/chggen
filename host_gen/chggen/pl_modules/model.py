@@ -577,7 +577,7 @@ class CHGGen(BaseModule):
         scaled_begin = torch.log(self.sigma_begin)
         scaled_end = torch.log(self.sigma_end) 
         sigmas = torch.exp(
-                    torch.linspace(scaled_begin, scaled_end, num_noise_level), 
+                    torch.linspace(scaled_begin, scaled_end, self.num_noise_level), 
                 )
                 
         if ld_kwargs.save_traj:
@@ -593,7 +593,7 @@ class CHGGen(BaseModule):
         cur_atom_types = composition.view(-1)
 
         # Loop over noise levels.
-        for sigma in tqdm(self.sigmas, total=self.sigmas.size(0), disable=ld_kwargs.disable_bar):
+        for sigma in tqdm(sigmas, total=sigmas.size(0), disable=ld_kwargs.disable_bar):
             if sigma < ld_kwargs.min_sigma:
                 break
             step_size = ld_kwargs.step_lr * (sigma / self.sigmas[-1]) ** 2
