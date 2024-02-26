@@ -571,6 +571,7 @@ class CHGGen(BaseModule):
         angles: torch.Tensor,
         composition: torch.Tensor,
         num_atoms: torch.Tensor,
+        sigmas: torch.Tensor,
         ld_kwargs, 
     ):
         if ld_kwargs.save_traj:
