@@ -579,6 +579,8 @@ class CHGGen(BaseModule):
         sigmas = torch.exp(
                     torch.linspace(scaled_begin, scaled_end, self.hparams.num_noise_level), 
                 )
+
+        print(sigmas)
                 
         if ld_kwargs.save_traj:
             all_frac_coords = []
