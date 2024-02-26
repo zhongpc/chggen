@@ -574,10 +574,10 @@ class CHGGen(BaseModule):
         ld_kwargs, 
     ):
 
-        scaled_begin = torch.log(self.sigma_begin)
-        scaled_end = torch.log(self.sigma_end) 
+        scaled_begin = torch.log(self.hparams.sigma_begin)
+        scaled_end = torch.log(self.hparams.sigma_end) 
         sigmas = torch.exp(
-                    torch.linspace(scaled_begin, scaled_end, self.num_noise_level), 
+                    torch.linspace(scaled_begin, scaled_end, self.hparams.num_noise_level), 
                 )
                 
         if ld_kwargs.save_traj:
