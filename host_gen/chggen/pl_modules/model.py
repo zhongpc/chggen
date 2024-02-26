@@ -571,9 +571,15 @@ class CHGGen(BaseModule):
         angles: torch.Tensor,
         composition: torch.Tensor,
         num_atoms: torch.Tensor,
-        sigmas: torch.Tensor,
         ld_kwargs, 
     ):
+
+        scaled_begin = torch.log(self.sigma_begin)
+        scaled_end = torch.log(self.sigma_end) 
+        sigmas = torch.exp(
+                    torch.linspace(scaled_begin, scaled_end, num_noise_level), 
+                )
+                
         if ld_kwargs.save_traj:
             all_frac_coords = []
             all_pred_cart_coord_diff = []
