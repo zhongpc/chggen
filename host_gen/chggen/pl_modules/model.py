@@ -596,7 +596,7 @@ class CHGGen(BaseModule):
         for sigma in tqdm(sigmas, total=sigmas.size(0), disable=ld_kwargs.disable_bar):
             if sigma < ld_kwargs.min_sigma:
                 break
-            step_size = ld_kwargs.step_lr * (sigma / self.sigmas[-1]) ** 2
+            step_size = ld_kwargs.step_lr * (sigma / sigmas[-1]) ** 2
 
             # Loop over steps for each noise level.
             for step in range(ld_kwargs.n_step_each):
