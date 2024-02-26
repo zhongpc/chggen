@@ -564,7 +564,83 @@ class CHGGen(BaseModule):
                 is_traj=True))
             
         return output_dict
-    
+
+    def annealing_dynamics(
+        self, 
+        lengths: torch.Tensor,
+        angles: torch.Tensor,
+        composition: torch.Tensor,
+        num_atoms: torch.Tensor,
+        ld_kwargs, 
+    ):
+        if ld_kwargs.save_traj:
+            all_frac_coords = []
+            all_pred_cart_coord_diff = []
+            all_noise_cart = []
+            all_atom_types = []
+
+        # Initialize fractional coordinates.
+        cur_frac_coords = torch.rand((num_atoms.sum(), 3), device=self.device, requires_grad = False)
+        
+        # Rearange composition.
+        cur_atom_types = composition.view(-1)
+
+        # Loop over noise levels.
+        for sigma in tqdm(self.sigmas, total=self.sigmas.size(0), disable=ld_kwargs.disable_bar):
+            if sigma < ld_kwargs.min_sigma:
+                break
+            step_size = ld_kwargs.step_lr * (sigma / self.sigmas[-1]) ** 2
+
+            # Loop over steps for each noise level.
+            for step in range(ld_kwargs.n_step_each):
+                noise_cart = torch.randn_like(cur_frac_coords) * torch.sqrt(step_size * 2)
+                cur_cart_coords = frac_to_cart_coords(
+                    frac_coords=cur_frac_coords, 
+                    lengths=lengths, 
+                    angles=angles, 
+                    num_atoms=num_atoms, 
+                )
+                with torch.no_grad():
+                    pred_cart_coord_diff = self.decoder(
+                        pred_cart_coords=cur_cart_coords, 
+                        pred_atom_types=cur_atom_types, 
+                        num_atoms=num_atoms, 
+                        lengths=lengths, 
+                        angles=angles,
+                    )
+                pred_cart_coord_diff = pred_cart_coord_diff / sigma
+
+                cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart
+                cur_frac_coords = cart_to_frac_coords(
+                    cart_coords=cur_cart_coords, 
+                    lengths=lengths, 
+                    angles=angles, 
+                    num_atoms=num_atoms,
+                )
+
+                if ld_kwargs.save_traj:
+                    all_frac_coords.append(cur_frac_coords)
+                    all_pred_cart_coord_diff.append(
+                        step_size * pred_cart_coord_diff)
+                    all_noise_cart.append(noise_cart)
+                    all_atom_types.append(cur_atom_types)
+
+        output_dict = {'num_atoms': num_atoms, 'lengths': lengths, 'angles': angles,
+                       'frac_coords': cur_frac_coords, 'atom_types': cur_atom_types,
+                       'is_traj': False}
+
+        if ld_kwargs.save_traj:
+            output_dict.update(dict(
+                all_frac_coords=torch.stack(all_frac_coords, dim=0),
+                all_atom_types=torch.stack(all_atom_types, dim=0),
+                all_pred_cart_coord_diff=torch.stack(
+                    all_pred_cart_coord_diff, dim=0),
+                all_noise_cart=torch.stack(all_noise_cart, dim=0),
+                is_traj=True))
+
+        return output_dict
+
+        
     @staticmethod
     def get_scheduler(
         t_T = 1000,
