@@ -47,13 +47,13 @@ class PeriodicTable:
         
         # ------------------------------------------------------------
         # put La and Ac series in group 3 and period 6 and 7 separately
-        La_series_ids = (self.atomic_number>=57) * (self.atomic_number<=70) 
-        Ac_series_ids = (self.atomic_number>=89) * (self.atomic_number<=102)
+        # La_series_ids = (self.atomic_number>=57) * (self.atomic_number<=70) 
+        # Ac_series_ids = (self.atomic_number>=89) * (self.atomic_number<=102)
 
-        self.period[La_series_ids] = 6
-        self.period[Ac_series_ids] = 7
-        self.group[La_series_ids] = 3
-        self.group[Ac_series_ids] = 3
+        # self.period[La_series_ids] = 6
+        # self.period[Ac_series_ids] = 7
+        # self.group[La_series_ids] = 3
+        # self.group[Ac_series_ids] = 3
         self.group = self.group.astype(np.int64)
         # ------------------------------------------------------------
         
