@@ -37,15 +37,19 @@ model_hparams ={'latent_dim': 64,           # Model dimension.
                 'property_dim': 1, 
                 'fc_num_layers': 2, 
                 'sigma_begin': 10.0,        # Noise level.
-                'sigma_end': 0.001,    
+                'sigma_end': 0.001,
+                'num_noise_level': 200,
                 'cost_coord': 1.0,          # Loss weight.
                 'cost_property': 0,
                 'decoder': 'nequip_ee',     # Decoder type.
+                'max_neighbors': 60,
+                'cutoff': 7.,
                 'irreps_hidden': '32x0e + 32x1e',
+                'irreps_edge': '32x0e + 32x1e + 16x2e',
                 'num_convs': 4,             # Number of convolutional layers.
                 'lr': 1e-3,                 
-                'lr_scheduler': None,       # Learning rate scheduler.
-                'lr_shrink': 0.01,          # Learning rate shrink.
+                'lr_scheduler': 'exp_decay',# Learning rate scheduler.
+                'lr_shrink': 1,          # Learning rate shrink.
                 'num_batch': len(datamodule.train_dataloader()),    # For warmup scheduler.
                 }
 
