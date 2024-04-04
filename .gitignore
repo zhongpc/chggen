@@ -2,6 +2,7 @@
 *cpython*
 *.log
 *.pyc
+**/data/
 
 # Ignore all files in the build directory
 chggen.egg-info/
