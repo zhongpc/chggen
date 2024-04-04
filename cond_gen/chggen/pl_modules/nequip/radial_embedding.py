@@ -46,8 +46,8 @@ class InitialEmbedding_EE(nn.Module):
     def forward(self, data):
         # Embed node
         x = data.x
-        x[(x>=57) * (x<=70)] = 57   # put La series in one element embedding
-        x[(x>=89) * (x<=102)] = 89  # put Ac series in one element embedding
+        # x[(x>=57) * (x<=70)] = 57   # put La series in one element embedding
+        # x[(x>=89) * (x<=102)] = 89  # put Ac series in one element embedding
         x = x - 1                   # index from 0.
         
         data.h_node_x = self.embed_node_x(x)
