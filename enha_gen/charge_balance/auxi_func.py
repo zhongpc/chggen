@@ -135,8 +135,8 @@ def structure_to_tensor(
         else:
             atom_masks.append(1)
 
-    atom_types = torch.tensor(atom_types)
-    atom_masks = torch.tensor(atom_masks)
-    num_atoms = torch.tensor([len(atom_types)])
+    atom_types = torch.tensor(atom_types, dtype=torch.int32)
+    atom_masks = torch.tensor(atom_masks, dtype=torch.bool)
+    num_atoms = torch.tensor([len(atom_types)], dtype=torch.int32)
 
     return (lengths, angles, frac_coords, atom_types, num_atoms, atom_masks)
