@@ -95,7 +95,7 @@ lengths, angles, frac_coords, atom_types, num_atoms, atom_masks = map(
 # Inpaint
 # ------------------------------------------------------------
 # Load pre-trained model.
-chggen = CHGGen.load_from_checkpoint('../../gen_org/data/test_models/mp/cutoff-7_epoch=49-val_loss=0.83.ckpt', strict=False, map_location=device)
+chggen = CHGGen.load_from_checkpoint('../data/model/cutoff-7_epoch=49-val_loss=0.83.ckpt', strict=False, map_location=device)
 
 # Print how many atoms are masked and no masked
 print(f"Number of masked atoms to diffusion: {sum(atom_masks)}/{len(atom_masks)}")

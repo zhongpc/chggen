@@ -22,7 +22,7 @@ cut_threshold = 5       # A
 
 
 # Load pre-trained model.
-chggen = CHGGen.load_from_checkpoint('../gen_org/data/test_models/mp/cutoff-7_epoch=49-val_loss=0.83.ckpt', strict=False, map_location=device)
+chggen = CHGGen.load_from_checkpoint('./data/model/cutoff-7_epoch=49-val_loss=0.83.ckpt', strict=False, map_location=device)
 
 # Load structure.
 s0 = Structure.from_file(
