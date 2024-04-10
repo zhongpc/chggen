@@ -95,6 +95,7 @@ class InitialEmbedding_condition(nn.Module):
         super().__init__()
         self.embed_node_x = nn.Embedding(num_species, emb_dim)
         self.embed_node_z = nn.Embedding(num_species, emb_dim)
+        # self.embed_condition = nn.Embedding(1, cond_dim)
         self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis=16)
     
     def forward(self, data):
@@ -106,10 +107,12 @@ class InitialEmbedding_condition(nn.Module):
 
         condition = data.property.view(-1, 1)
 
+        # print('condition:', condition)
+        # print('condition_shape:', condition.shape)
+
         node_x = self.embed_node_x(x)
         node_z = self.embed_node_z(x)
         node_cond = condition_embedding(condition, embedding_dim=16, const=1000)
-        # node_cond = node_cond.repeat_interleave(datas.num_atoms, dim=0)
         
         data.h_node_x = torch.cat((node_x, node_cond), axis = 1)
         data.h_node_z = torch.cat((node_z, node_cond), axis = 1)
