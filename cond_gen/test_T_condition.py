@@ -12,13 +12,13 @@ mkdir("./data/test_models/mp_pretrain_con/")
 
 # Initialize dataset.
 train_dataset = CHGNetDataset(
-    path= '/home/zhongpc/chggen/host_gen/data/debug.csv', # mp_train.csv for fine-tuning
+    path= '/home/zhongpc/chggen/cond_gen/debug.csv', # mp_train.csv for fine-tuning
     name = 'train_MP',
     prop_list = ['T'],
 )
 
 val_dataset = CHGNetDataset(
-    path= '/home/zhongpc/chggen/host_gen/data/debug.csv', # mp_val.csv for fine-tuning
+    path= '/home/zhongpc/chggen/cond_gen/debug.csv', # mp_val.csv for fine-tuning
     name = 'val_MP',
     prop_list = ['T'],
 )

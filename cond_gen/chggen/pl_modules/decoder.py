@@ -122,16 +122,17 @@ class NequipTableDecoder(nn.Module):
             return_distance_vec=True,
         )
 
-        
-
-        if properties is None:
-            data = Data(
+        data_0 = Data(
             x       = pred_atom_types, # do not need minus 1 to accomodate the index. This is done in Nequip class. 
             pbc     = True,
             edge_index = edge_index,
             edge_attr = out['distance_vec'],
             property = torch.zeros_like(pred_atom_types, dtype = torch.float32, device = pred_atom_types.device)
         )
+        pred_cart_coord_diff_0 = self.nequip(data_0)
+        
+        if properties is None:
+            return pred_cart_coord_diff_0, pred_cart_coord_diff_0
         else:       
             properties = properties.repeat_interleave(num_atoms, dim=0)
             data = Data(
@@ -141,10 +142,9 @@ class NequipTableDecoder(nn.Module):
                 edge_attr = out['distance_vec'],
                 property = properties
             )
-
-        pred_cart_coord_diff = self.nequip(data)
+            pred_cart_coord_diff = self.nequip(data)
             
-        return pred_cart_coord_diff
+        return pred_cart_coord_diff_0, pred_cart_coord_diff
 
 class GemNetTDecoder(nn.Module):
     """Decoder with GemNetT."""

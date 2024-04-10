@@ -118,6 +118,7 @@ class CHGGen(BaseModule):
             'lr': 1e-3,
             'lr_scheduler': None,
             'lr_shrink': 0.01,
+            'gamma': 1.0,
         }
         default_hyperparameters.update(hparams_dict)
         
@@ -206,7 +207,7 @@ class CHGGen(BaseModule):
 
         # batch.properties $ [batch, 1]
 
-        pred_cart_coord_diff  = self.decoder(
+        pred_cart_coord_diff_0, pred_cart_coord_diff  = self.decoder(
             pred_cart_coords=cart_coords, 
             pred_atom_types=batch.atom_types, 
             num_atoms=batch.num_atoms, 
@@ -216,12 +217,21 @@ class CHGGen(BaseModule):
         )
         
         # Compute loss.
-        coord_loss = self.coord_loss(
+        coord_loss_0 = self.coord_loss(
+            pred_cart_coord_diff_0, 
+            cart_coords, 
+            used_sigmas_per_atom, 
+            batch,
+        )
+
+        coord_loss_cond = self.coord_loss(
             pred_cart_coord_diff, 
             cart_coords, 
             used_sigmas_per_atom, 
             batch,
         )
+
+        coord_loss = self.hparams.gamma * coord_loss_cond + (1 - self.hparams.gamma) * coord_loss_0
 
         return {
             'coord_loss': coord_loss,

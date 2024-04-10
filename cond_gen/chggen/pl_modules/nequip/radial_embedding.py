@@ -104,7 +104,7 @@ class InitialEmbedding_condition(nn.Module):
         # x[(x>=89) * (x<=102)] = 89  # put Ac series in one element embedding
         x = x - 1                   # index from 0.
 
-        condition = data.property
+        condition = data.property.view(-1, 1)
 
         node_x = self.embed_node_x(x)
         node_z = self.embed_node_z(x)
