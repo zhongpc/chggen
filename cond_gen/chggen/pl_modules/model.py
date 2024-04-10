@@ -149,6 +149,18 @@ class CHGGen(BaseModule):
                 num_convs      = self.hparams.num_convs,
                 radial_neurons = self.hparams.radial_neurons,
             )
+
+        elif self.hparams.decoder == 'nequip_cond':          # Periodic table embedding
+            self.decoder = NequipTableDecoder(
+                model_version = 'nequip_cond',
+                irreps_node_x  = self.hparams.irreps_node_x,
+                irreps_node_z  = self.hparams.irreps_node_z,
+                irreps_hidden  = self.hparams.irreps_hidden,
+                irreps_edge    = self.hparams.irreps_edge,
+                irreps_out     = self.hparams.irreps_out,
+                num_convs      = self.hparams.num_convs,
+                radial_neurons = self.hparams.radial_neurons,
+            )
             
         elif self.hparams.decoder == 'gemnet':              # Gemnet
             self.decoder = GemNetTDecoder(self.hparams.hidden_dim, self.hparams.latent_dim)
@@ -192,12 +204,15 @@ class CHGGen(BaseModule):
         )
         cart_coords = cart_coords + cart_noises_per_atom
 
+        # batch.properties $ [batch, 1]
+
         pred_cart_coord_diff  = self.decoder(
             pred_cart_coords=cart_coords, 
             pred_atom_types=batch.atom_types, 
             num_atoms=batch.num_atoms, 
             lengths=batch.lengths, 
             angles=batch.angles,
+            properties = batch.properties,
         )
         
         # Compute loss.

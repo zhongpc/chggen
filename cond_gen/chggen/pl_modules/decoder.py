@@ -8,10 +8,9 @@ from chggen.common.data_utils import (
     radius_graph_pbc,
     cart_to_frac_coords,
 )
-from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding_PTE, InitialEmbedding_EE
-from chggen.pl_modules.nequip.e3nn_nequip import NequIP_PTE, NequIP_EE
+from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding_PTE, InitialEmbedding_EE, InitialEmbedding_condition
+from chggen.pl_modules.nequip.e3nn_nequip import NequIP_PTE, NequIP_EE, NequIP_condition
 from chggen.pl_modules.gemnet.gemnet import GemNetT
-
 
 
 class NequipTableDecoder(nn.Module):
@@ -59,6 +58,19 @@ class NequipTableDecoder(nn.Module):
                 radial_neurons = radial_neurons,
                 num_neighbors  = self.max_num_neighbors / 2,
             )
+
+        elif model_version == 'nequip_cond':      # Element embedding
+            self.nequip = NequIP_condition(
+                init_embed = InitialEmbedding_condition(num_species=89, cutoff=cutoff, emb_dim=16, cond_dim = 16),
+                irreps_node_x  = irreps_node_x,
+                irreps_node_z  = irreps_node_z,
+                irreps_hidden  = irreps_hidden,
+                irreps_edge    = irreps_edge,
+                irreps_out     = irreps_out,
+                num_convs      = num_convs ,
+                radial_neurons = radial_neurons,
+                num_neighbors  = self.max_num_neighbors / 2,
+            )
             
         else:
             raise NotImplementedError(f"Model version {model_version} not implemented")
@@ -70,6 +82,7 @@ class NequipTableDecoder(nn.Module):
         num_atoms,
         lengths, 
         angles,
+        properties = None, # the default is no property guidance
     ):
         """Forward pass of the decoder.
         
@@ -109,12 +122,25 @@ class NequipTableDecoder(nn.Module):
             return_distance_vec=True,
         )
 
-        data = Data(
+        
+
+        if properties is None:
+            data = Data(
             x       = pred_atom_types, # do not need minus 1 to accomodate the index. This is done in Nequip class. 
             pbc     = True,
             edge_index = edge_index,
-            edge_attr = out['distance_vec']
+            edge_attr = out['distance_vec'],
+            property = torch.zeros_like(pred_atom_types, dtype = torch.float32, device = pred_atom_types.device)
         )
+        else:       
+            properties = properties.repeat_interleave(num_atoms, dim=0)
+            data = Data(
+                x       = pred_atom_types, # do not need minus 1 to accomodate the index. This is done in Nequip class. 
+                pbc     = True,
+                edge_index = edge_index,
+                edge_attr = out['distance_vec'],
+                property = properties
+            )
 
         pred_cart_coord_diff = self.nequip(data)
             
