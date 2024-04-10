@@ -48,7 +48,7 @@ class NequipTableDecoder(nn.Module):
             
         elif model_version == 'nequip_ee':      # Element embedding
             self.nequip = NequIP_EE(
-                init_embed = InitialEmbedding_EE(num_species=89, cutoff=cutoff, emb_dim=32),
+                init_embed = InitialEmbedding_EE(num_species=118, cutoff=cutoff, emb_dim=32),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
                 irreps_hidden  = irreps_hidden,
@@ -59,7 +59,7 @@ class NequipTableDecoder(nn.Module):
                 num_neighbors  = self.max_num_neighbors / 2,
             )
 
-        elif model_version == 'nequip_cond':      # Element embedding
+        elif model_version == 'nequip_cond':      # Element embedding with condition
             self.nequip = NequIP_condition(
                 init_embed = InitialEmbedding_condition(num_species=118, cutoff=cutoff, emb_dim=16, cond_dim = 16),
                 irreps_node_x  = irreps_node_x,
@@ -130,10 +130,7 @@ class NequipTableDecoder(nn.Module):
             property = torch.zeros_like(pred_atom_types, dtype = torch.float32, device = pred_atom_types.device)
         )
         pred_cart_coord_diff_0 = self.nequip(data_0)
-        # Convert properties to a tensor if it's not already one
 
-
-        # print("propeties: ", properties)
         if properties is None or properties.nelement() == 0: # no property guidance
             # print("No property guidance")
             return pred_cart_coord_diff_0, pred_cart_coord_diff_0
@@ -149,21 +146,7 @@ class NequipTableDecoder(nn.Module):
             pred_cart_coord_diff = self.nequip(data)
             
         return pred_cart_coord_diff_0, pred_cart_coord_diff
-        # if properties is None: # no property guidance
-        #     print("No property guidance")
-        #     return pred_cart_coord_diff_0, pred_cart_coord_diff_0
-        # else:       
-        #     properties = properties.repeat_interleave(num_atoms, dim=0)
-        #     data = Data(
-        #         x       = pred_atom_types, # do not need minus 1 to accomodate the index. This is done in Nequip class. 
-        #         pbc     = True,
-        #         edge_index = edge_index,
-        #         edge_attr = out['distance_vec'],
-        #         property = properties
-        #     )
-        #     pred_cart_coord_diff = self.nequip(data)
-            
-        # return pred_cart_coord_diff_0, pred_cart_coord_diff
+
 
 class GemNetTDecoder(nn.Module):
     """Decoder with GemNetT."""

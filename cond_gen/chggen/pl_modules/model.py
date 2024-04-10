@@ -125,50 +125,19 @@ class CHGGen(BaseModule):
         self.save_hyperparameters(default_hyperparameters)
 
         # Initialize decoder.
-        if self.hparams.decoder == 'nequip_ee':             # Elemental one-hot embedding
-            self.decoder = NequipTableDecoder(
-                model_version = 'nequip_ee',
-                max_neighbors = self.hparams.max_neighbors,
-                cutoff = self.hparams.cutoff,
-                irreps_node_x  = self.hparams.irreps_node_x,
-                irreps_node_z  = self.hparams.irreps_node_z,
-                irreps_hidden  = self.hparams.irreps_hidden,
-                irreps_edge    = self.hparams.irreps_edge,
-                irreps_out     = self.hparams.irreps_out,
-                num_convs      = self.hparams.num_convs,
-                radial_neurons = self.hparams.radial_neurons,
-            )
+        self.decoder = NequipTableDecoder(
+            model_version = self.hparams.decoder,
+            max_neighbors = self.hparams.max_neighbors,
+            cutoff = self.hparams.cutoff,
+            irreps_node_x  = self.hparams.irreps_node_x,
+            irreps_node_z  = self.hparams.irreps_node_z,
+            irreps_hidden  = self.hparams.irreps_hidden,
+            irreps_edge    = self.hparams.irreps_edge,
+            irreps_out     = self.hparams.irreps_out,
+            num_convs      = self.hparams.num_convs,
+            radial_neurons = self.hparams.radial_neurons,
+        )
             
-        elif self.hparams.decoder == 'nequip_pte':          # Periodic table embedding
-            self.decoder = NequipTableDecoder(
-                model_version = 'nequip_pte',
-                irreps_node_x  = self.hparams.irreps_node_x,
-                irreps_node_z  = self.hparams.irreps_node_z,
-                irreps_hidden  = self.hparams.irreps_hidden,
-                irreps_edge    = self.hparams.irreps_edge,
-                irreps_out     = self.hparams.irreps_out,
-                num_convs      = self.hparams.num_convs,
-                radial_neurons = self.hparams.radial_neurons,
-            )
-
-        elif self.hparams.decoder == 'nequip_cond':          # Periodic table embedding
-            self.decoder = NequipTableDecoder(
-                model_version = 'nequip_cond',
-                irreps_node_x  = self.hparams.irreps_node_x,
-                irreps_node_z  = self.hparams.irreps_node_z,
-                irreps_hidden  = self.hparams.irreps_hidden,
-                irreps_edge    = self.hparams.irreps_edge,
-                irreps_out     = self.hparams.irreps_out,
-                num_convs      = self.hparams.num_convs,
-                radial_neurons = self.hparams.radial_neurons,
-            )
-            
-        elif self.hparams.decoder == 'gemnet':              # Gemnet
-            self.decoder = GemNetTDecoder(self.hparams.hidden_dim, self.hparams.latent_dim)
-            
-        else:
-            raise NotImplementedError
-
         # For property prediction.
         if self.hparams.predict_property:
             self.fc_property = build_mlp(
