@@ -61,7 +61,7 @@ class NequipTableDecoder(nn.Module):
 
         elif model_version == 'nequip_cond':      # Element embedding
             self.nequip = NequIP_condition(
-                init_embed = InitialEmbedding_condition(num_species=89, cutoff=cutoff, emb_dim=16, cond_dim = 16),
+                init_embed = InitialEmbedding_condition(num_species=118, cutoff=cutoff, emb_dim=16, cond_dim = 16),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
                 irreps_hidden  = irreps_hidden,
