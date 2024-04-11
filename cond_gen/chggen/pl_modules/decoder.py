@@ -8,8 +8,8 @@ from chggen.common.data_utils import (
     radius_graph_pbc,
     cart_to_frac_coords,
 )
-from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding_PTE, InitialEmbedding_EE, InitialEmbedding_condition
-from chggen.pl_modules.nequip.e3nn_nequip import NequIP_PTE, NequIP_EE, NequIP_condition
+from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding_EE, InitialEmbedding_condition
+from chggen.pl_modules.nequip.e3nn_nequip import NequIP_EE, NequIP_condition
 from chggen.pl_modules.gemnet.gemnet import GemNetT
 
 
@@ -33,20 +33,7 @@ class NequipTableDecoder(nn.Module):
         self.cutoff = cutoff
         self.max_num_neighbors = max_neighbors
 
-        if model_version == 'nequip_pte':       # Periodic table embedding
-            self.nequip = NequIP_PTE(
-                init_embed = InitialEmbedding_PTE(num_periods=7, num_groups=18, cutoff=cutoff, emb_dim=32),
-                irreps_node_x  = irreps_node_x,
-                irreps_node_z  = irreps_node_z,
-                irreps_hidden  = irreps_hidden,
-                irreps_edge    = irreps_edge,
-                irreps_out     = irreps_out,
-                num_convs      = num_convs ,
-                radial_neurons = radial_neurons,
-                num_neighbors  = self.max_num_neighbors / 2,
-            )
-            
-        elif model_version == 'nequip_ee':      # Element embedding
+        if model_version == 'nequip_ee':      # Element embedding
             self.nequip = NequIP_EE(
                 init_embed = InitialEmbedding_EE(num_species=118, cutoff=cutoff, emb_dim=32),
                 irreps_node_x  = irreps_node_x,
@@ -61,7 +48,7 @@ class NequipTableDecoder(nn.Module):
 
         elif model_version == 'nequip_cond':      # Element embedding with condition
             self.nequip = NequIP_condition(
-                init_embed = InitialEmbedding_condition(num_species=118, cutoff=cutoff, emb_dim=16, cond_dim = 16),
+                init_embed = InitialEmbedding_condition(num_species=118, cutoff=cutoff, emb_dim=32),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
                 irreps_hidden  = irreps_hidden,
@@ -82,6 +69,7 @@ class NequipTableDecoder(nn.Module):
         num_atoms,
         lengths, 
         angles,
+        gamma = 0.0, # the default is no property guidance with gamma = 0
         properties = None, # the default is no property guidance
     ):
         """Forward pass of the decoder.
@@ -133,7 +121,7 @@ class NequipTableDecoder(nn.Module):
 
         if properties is None or properties.nelement() == 0: # no property guidance
             # print("No property guidance")
-            return pred_cart_coord_diff_0, pred_cart_coord_diff_0
+            return pred_cart_coord_diff_0
         else:       
             properties = properties.repeat_interleave(num_atoms, dim=0)
             data = Data(
@@ -144,8 +132,7 @@ class NequipTableDecoder(nn.Module):
             property = properties
             )
             pred_cart_coord_diff = self.nequip(data)
-            
-        return pred_cart_coord_diff_0, pred_cart_coord_diff
+            return gamma* pred_cart_coord_diff + (1 - gamma) * pred_cart_coord_diff_0
 
 
 class GemNetTDecoder(nn.Module):

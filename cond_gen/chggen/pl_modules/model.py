@@ -166,6 +166,7 @@ class CHGGen(BaseModule):
         # Add noise to the cartesian coordinates.
         cart_noises_per_atom = torch.randn_like(batch.frac_coords) \
             * used_sigmas_per_atom[:, None]
+        
         cart_coords = frac_to_cart_coords(
             frac_coords=batch.frac_coords, 
             lengths=batch.lengths, 
@@ -176,31 +177,24 @@ class CHGGen(BaseModule):
 
         # batch.properties $ [batch, 1]
 
-        pred_cart_coord_diff_0, pred_cart_coord_diff  = self.decoder(
+        pred_cart_coord_diff  = self.decoder(
             pred_cart_coords=cart_coords, 
             pred_atom_types=batch.atom_types, 
             num_atoms=batch.num_atoms, 
             lengths=batch.lengths, 
             angles=batch.angles,
+            gamma = self.hparams.gamma,
             properties = batch.properties,
         )
         
         # Compute loss.
-        coord_loss_0 = self.coord_loss(
-            pred_cart_coord_diff_0, 
-            cart_coords, 
-            used_sigmas_per_atom, 
-            batch,
-        )
 
-        coord_loss_cond = self.coord_loss(
+        coord_loss = self.coord_loss(
             pred_cart_coord_diff, 
             cart_coords, 
             used_sigmas_per_atom, 
             batch,
         )
-
-        coord_loss = self.hparams.gamma * coord_loss_cond + (1 - self.hparams.gamma) * coord_loss_0
 
         return {
             'coord_loss': coord_loss,

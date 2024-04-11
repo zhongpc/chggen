@@ -6,22 +6,6 @@ from .basis import bessel
 from ..embeddings.element_table import PeriodicTable
 
 
-# class ConditionEncoder(nn.Module):
-#     def __init__(self, embedding_dim=16, const=1000):
-#         """
-#         Initialize the ConditionEncoder module.
-#         Args:
-#         - embedding_dim (int): The dimensionality of the sinusoid embedding.
-#         - const (float): A constant used to adjust frequencies of the sinusoid functions.
-#         """
-#         super(ConditionEncoder, self).__init__()
-#         self.embedding_dim = embedding_dim
-#         self.const = const
-#         # Generate divisors for the denominator based on the embedding dimension.
-#         # These are powers of 2, scaled by the constant.
-#         self.div_term = torch.pow(2.0, torch.arange(0., embedding_dim) / embedding_dim) * const
-
-
 def condition_embedding(x, embedding_dim=16, const=1000):
     """
     Forward pass of the ConditionEncoder.
@@ -35,35 +19,6 @@ def condition_embedding(x, embedding_dim=16, const=1000):
     encoding = torch.sin(x / div_term)
     return encoding
 
-
-
-# radial embedding
-class InitialEmbedding_PTE(nn.Module):
-    def __init__(self, num_periods, num_groups, cutoff, emb_dim):
-        super().__init__()
-        self.periodic_table = PeriodicTable()
-        self.embed_node_x_period = nn.Embedding(num_periods, emb_dim)
-        self.embed_node_z_period = nn.Embedding(num_periods, emb_dim)
-        self.embed_node_x_group = nn.Embedding(num_groups, emb_dim)
-        self.embed_node_z_group = nn.Embedding(num_groups, emb_dim)
-        self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis=16)
-    
-    def forward(self, data):
-        # Embed node
-        x_period = self.periodic_table.get_property_from_atomic_numbers(data.x, 'period')-1 # index from 0.
-        x_group = self.periodic_table.get_property_from_atomic_numbers(data.x, 'group')-1  # index from 0.
-        
-        data.h_node_x_period = self.embed_node_x_period(x_period)
-        data.h_node_z_period = self.embed_node_z_period(x_period)
-        data.h_node_x_group = self.embed_node_x_group(x_group)
-        data.h_node_z_group = self.embed_node_z_group(x_group)
-
-        # Embed edge
-        data.h_edge = self.embed_edge(data.edge_attr.norm(dim=-1))
-        
-        return data
-    
-    
 
 # radial embedding
 class InitialEmbedding_EE(nn.Module):
@@ -91,10 +46,12 @@ class InitialEmbedding_EE(nn.Module):
 
 # radial embedding
 class InitialEmbedding_condition(nn.Module):
-    def __init__(self, num_species, cutoff, emb_dim, cond_dim):
+    def __init__(self, num_species, cutoff, emb_dim):
         super().__init__()
+        self.emb_dim = emb_dim
         self.embed_node_x = nn.Embedding(num_species, emb_dim)
         self.embed_node_z = nn.Embedding(num_species, emb_dim)
+        self.scale_W = nn.Linear(emb_dim, emb_dim, bias=False)
         # self.embed_condition = nn.Embedding(1, cond_dim)
         self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis=16)
     
@@ -112,10 +69,10 @@ class InitialEmbedding_condition(nn.Module):
 
         node_x = self.embed_node_x(x)
         node_z = self.embed_node_z(x)
-        node_cond = condition_embedding(condition, embedding_dim=16, const=1000)
+        node_cond = self.scale_W(condition_embedding(condition, embedding_dim= self.emb_dim, const=1000))
         
-        data.h_node_x = torch.cat((node_x, node_cond), axis = 1)
-        data.h_node_z = torch.cat((node_z, node_cond), axis = 1)
+        data.h_node_x = node_x + node_cond # ), axis = 1)
+        data.h_node_z = node_z + node_cond # ), axis = 1)
 
         # Embed edge
         data.h_edge = self.embed_edge(data.edge_attr.norm(dim=-1))
