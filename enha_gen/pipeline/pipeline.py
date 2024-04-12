@@ -36,7 +36,8 @@ device = 'cuda:2'
 # Parameter Setting
 uncertain_cut = 0.07            # Thredhold for unertainty
 min_dist_cut = 12               # Minimum distance for cutting
-inpaint_cut = 6.0               # Cut threshold for inpainting
+cut_shape = "box"            # Shape for cutting
+inpaint_cut = 5.0               # Cut threshold for inpainting
 subcell_size = [12,12,12]       # Cut subcells
 
 # Load pre-trained model.
@@ -129,6 +130,7 @@ for id, s_sub in enumerate(s_subs):
         structure = s_temp,
         atoms_to_add = atoms_to_add,
         cut_threshold = inpaint_cut,
+        cut_shape = cut_shape,
         verbose=True,
     )
     print(len(s_temp))
@@ -147,6 +149,7 @@ for id, s_sub in enumerate(s_subs):
     ) = structure_to_tensor(
         structure = s_temp,
         cut_threshold = inpaint_cut,
+        cut_shape = cut_shape,
     )
 
     # Map to device

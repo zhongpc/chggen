@@ -1,6 +1,6 @@
 """Auxiliary functions for charge balance computation and manipulation."""
 from __future__ import annotations
-from typing import Tuple
+from typing import Tuple, Literal
 import numpy as np
 from pymatgen.core import Structure, Element
 import torch
@@ -64,16 +64,31 @@ def structure_add_atoms(
     structure: Structure,
     atoms_to_add: dict,
     cut_threshold: float = 5.0,
+    cut_shape: Literal["sphere", "box"] = "sphere",
     verbose: bool = False,
 ) -> Structure:
-    """Add atoms to the structure."""
+    """Add atoms to the structure.
+    
+    Args:
+        structure (Structure): pymatgen Structure to be manipulated
+        atoms_to_add (Dict): number of atoms to be added w.r.t. elem
+        cut_threshold (float): threshold distance from the center of 
+            the cell to the sphere boundary for cut_shape == shpere, 
+            or half of the cut box size for cut_shape == box.
+        cut_shape (str): shape of the cut sphere or box
+        verbose (bool): print the information of the added atoms
+    """
+    # Update check function by cut_shape
+    check_in_shell = check_point_in_sphere if cut_shape == "sphere" else check_point_in_box 
+    
     # Get the lattice parameters
     lattice = structure.lattice.matrix
 
-    # Check if the sphere completely encloses the unit cell
+    # Check if the sphere or box completely encloses the unit cell
     diagonals = [np.dot(np.array([i, j, k]), lattice) for i in [-1, 1] for j in [-1, 1] for k in [-1, 1]]
     max_diagonal = max(np.linalg.norm(diagonal) for diagonal in diagonals)
-    if max_diagonal <= 2*cut_threshold:
+    max_cut = 2*cut_threshold if cut_shape == "sphere" else 2*cut_threshold*np.sqrt(3)
+    if max_diagonal <= max_cut:
         raise RuntimeError("The sphere completely encloses the unit cell")
 
     # Calculate the center of the cell
@@ -88,7 +103,7 @@ def structure_add_atoms(
                 while True:
                     position = np.random.rand(3)
                     position = np.dot(position, lattice)
-                    if np.linalg.norm(position - center) > cut_threshold:  
+                    if not check_in_shell(position, center, cut_threshold):  
                         break
                 structure.append(Element(atom), position, coords_are_cartesian=True)
                 if verbose:
@@ -97,9 +112,10 @@ def structure_add_atoms(
                     
         elif count < 0:  # Remove atoms
             for _ in range(int(-count)):
+                # Generate indices of atoms of type atom outside the cut sphere
                 indices = [i for i, site in enumerate(structure) 
                            if site.specie.symbol == atom 
-                           and np.linalg.norm(site.coords - center) > cut_threshold]
+                           and not check_in_shell(position, center, cut_threshold)]
                 if not indices:
                     raise RuntimeError(f"No atoms of type {atom} found in the structure outside the cut sphere")
                 index_to_remove = np.random.choice(indices)
@@ -113,9 +129,21 @@ def structure_add_atoms(
 def structure_to_tensor(
     structure: Structure,
     cut_threshold: float = 5.0,
+    cut_shape: Literal["sphere", "box"] = "sphere",
 ) -> Tuple[torch.Tensor]:
     """Convert pymatgen Structure to torch tensor including
-    angles, lengths, frac_coords, atom_types, num_atoms, mask."""
+    angles, lengths, frac_coords, atom_types, num_atoms, mask.
+    
+    Args:
+        structure (Structure): pymatgen Structure to be converted
+        cut_threshold (float): threshold distance from the center of 
+            the cell to the sphere boundary for cut_shape == shpere, 
+            or half of the cut box size for cut_shape == box.
+        cut_shape (str): shape of the cut sphere or box
+    """
+    # Update check function by cut_shape
+    check_in_shell = check_point_in_sphere if cut_shape == "sphere" else check_point_in_box
+    
     # Construct framework structure
     lattice = torch.tensor(structure.lattice.matrix, dtype=torch.float32)
     angles = torch.tensor([structure.lattice.angles], dtype=torch.float32)
@@ -123,14 +151,14 @@ def structure_to_tensor(
     frac_coords = torch.tensor(structure.frac_coords, dtype=torch.float32)
 
     # Compute the distance from current atom to the center of the cell
-    center = torch.tensor([0.5, 0.5, 0.5], dtype = torch.float32)
-    cart_dist = torch.norm((frac_coords - center)@lattice, dim=1)
-    
+    center = torch.tensor([0.5, 0.5, 0.5], dtype = torch.float32)@lattice
+    cart_coords = frac_coords@lattice
+
     atom_types = []
     atom_masks = []
     for i, site in enumerate(structure.sites):
         atom_types.append(site.specie.Z)
-        if cart_dist[i] < cut_threshold:
+        if check_in_shell(cart_coords[i], center, cut_threshold):
             atom_masks.append(0)
         else:
             atom_masks.append(1)
@@ -140,6 +168,28 @@ def structure_to_tensor(
     num_atoms = torch.tensor([len(atom_types)], dtype=torch.int32)
 
     return (lengths, angles, frac_coords, atom_types, num_atoms, atom_masks)
+
+def check_point_in_sphere(
+    position: np.ndarray, center: np.ndarray, radius: float,
+) -> bool:
+    """Check if a point is inside a sphere."""
+    # Convert torch.Tensor to numpy.ndarray
+    if isinstance(position, torch.Tensor):
+        position = position.numpy()
+    if isinstance(center, torch.Tensor):
+        center = center.numpy()
+    return np.linalg.norm(position - center) < radius
+
+def check_point_in_box(
+    position: np.ndarray, center: np.ndarray, half_box_size: float,
+) -> bool:
+    """Check if a point is inside a box."""
+    # Convert torch.Tensor to numpy.ndarray
+    if isinstance(position, torch.Tensor):
+        position = position.numpy()
+    if isinstance(center, torch.Tensor):
+        center = center.numpy()
+    return np.all(np.abs(position - center) < half_box_size)
 
 def check_in_box(structure, center_id, atom_id, box_size):
     """Check if a coordinate is in a box centered at center with size.
