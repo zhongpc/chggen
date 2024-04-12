@@ -118,44 +118,26 @@ class CHGGen(BaseModule):
             'lr': 1e-3,
             'lr_scheduler': None,
             'lr_shrink': 0.01,
+            'gamma': 1.0,
         }
         default_hyperparameters.update(hparams_dict)
         
         self.save_hyperparameters(default_hyperparameters)
 
         # Initialize decoder.
-        if self.hparams.decoder == 'nequip_ee':             # Elemental one-hot embedding
-            self.decoder = NequipTableDecoder(
-                model_version = 'nequip_ee',
-                max_neighbors = self.hparams.max_neighbors,
-                cutoff = self.hparams.cutoff,
-                irreps_node_x  = self.hparams.irreps_node_x,
-                irreps_node_z  = self.hparams.irreps_node_z,
-                irreps_hidden  = self.hparams.irreps_hidden,
-                irreps_edge    = self.hparams.irreps_edge,
-                irreps_out     = self.hparams.irreps_out,
-                num_convs      = self.hparams.num_convs,
-                radial_neurons = self.hparams.radial_neurons,
-            )
+        self.decoder = NequipTableDecoder(
+            model_version = self.hparams.decoder,
+            max_neighbors = self.hparams.max_neighbors,
+            cutoff = self.hparams.cutoff,
+            irreps_node_x  = self.hparams.irreps_node_x,
+            irreps_node_z  = self.hparams.irreps_node_z,
+            irreps_hidden  = self.hparams.irreps_hidden,
+            irreps_edge    = self.hparams.irreps_edge,
+            irreps_out     = self.hparams.irreps_out,
+            num_convs      = self.hparams.num_convs,
+            radial_neurons = self.hparams.radial_neurons,
+        )
             
-        elif self.hparams.decoder == 'nequip_pte':          # Periodic table embedding
-            self.decoder = NequipTableDecoder(
-                model_version = 'nequip_pte',
-                irreps_node_x  = self.hparams.irreps_node_x,
-                irreps_node_z  = self.hparams.irreps_node_z,
-                irreps_hidden  = self.hparams.irreps_hidden,
-                irreps_edge    = self.hparams.irreps_edge,
-                irreps_out     = self.hparams.irreps_out,
-                num_convs      = self.hparams.num_convs,
-                radial_neurons = self.hparams.radial_neurons,
-            )
-            
-        elif self.hparams.decoder == 'gemnet':              # Gemnet
-            self.decoder = GemNetTDecoder(self.hparams.hidden_dim, self.hparams.latent_dim)
-            
-        else:
-            raise NotImplementedError
-
         # For property prediction.
         if self.hparams.predict_property:
             self.fc_property = build_mlp(
@@ -184,6 +166,7 @@ class CHGGen(BaseModule):
         # Add noise to the cartesian coordinates.
         cart_noises_per_atom = torch.randn_like(batch.frac_coords) \
             * used_sigmas_per_atom[:, None]
+        
         cart_coords = frac_to_cart_coords(
             frac_coords=batch.frac_coords, 
             lengths=batch.lengths, 
@@ -192,15 +175,20 @@ class CHGGen(BaseModule):
         )
         cart_coords = cart_coords + cart_noises_per_atom
 
+        # batch.properties $ [batch, 1]
+
         pred_cart_coord_diff  = self.decoder(
             pred_cart_coords=cart_coords, 
             pred_atom_types=batch.atom_types, 
             num_atoms=batch.num_atoms, 
             lengths=batch.lengths, 
             angles=batch.angles,
+            gamma = self.hparams.gamma,
+            properties = batch.properties,
         )
         
         # Compute loss.
+
         coord_loss = self.coord_loss(
             pred_cart_coord_diff, 
             cart_coords, 
