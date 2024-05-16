@@ -46,6 +46,53 @@ def process_one(
     result_dict.update(properties)
     return result_dict
 
+
+def process_pmg_structure(
+    structure: Structure,
+    # prop_list: list,
+) -> dict:
+    """Process one pymatgen structure"""  
+
+    mp_id = 0
+
+    # properties = {k: row[k] for k in prop_list if k in row.keys()}
+    data_dict = {
+        'mp_id': mp_id,
+        # 'cif': crystal_str,
+        'lattice': structure.lattice.matrix,
+        'frac_coords': structure.frac_coords,
+        'atom_types': structure.atomic_numbers,
+        'lengths': np.array(structure.lattice.lengths),
+        'angles': np.array(structure.lattice.angles),
+        'num_atoms': structure.num_sites,
+        'atom_volume': structure.volume / structure.num_sites,
+    }
+
+    lattice = data_dict['lattice']                      # (num of structure, 9)
+    frac_coords = data_dict['frac_coords']
+    atom_types = data_dict['atom_types']
+    lengths = data_dict['lengths']
+    angles = data_dict['angles']
+    num_atoms = data_dict['num_atoms']
+    atom_volume = data_dict['atom_volume'] 
+
+    # https://pytorch-geometric.readthedocs.io/en/latest/notes/batching.html
+    data = Data(
+        x=torch.LongTensor(atom_types),
+        lattices=torch.Tensor(lattice).view(1, -1),
+        frac_coords=torch.Tensor(frac_coords),
+        atom_types=torch.LongTensor(atom_types),
+        lengths = torch.Tensor(lengths).view(1, -1),
+        angles = torch.Tensor(angles).view(1, -1),
+        num_atoms = num_atoms,
+        atom_volume = torch.Tensor([atom_volume]).view(1, -1),
+        # properties = torch.Tensor(prop_list).view(1, -1),
+    )
+    
+    # result_dict.update(properties)
+    return data
+
+
 def process_csv(
     input_file: str, 
     num_workers: int,                          

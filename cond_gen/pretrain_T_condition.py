@@ -8,19 +8,19 @@ from chggen.pl_modules.model import CHGGen
 
 
 
-MODEL_DIR = "./data/test_models/mp_pretrain_con/"
+MODEL_DIR = "./data/test_models/hui_pretrain_cond/"
 mkdir(MODEL_DIR)
 
 # Initialize dataset.
 train_dataset = CHGNetDataset(
-    path= '/home/zhongpc/chggen/cond_gen/data/hui_amorphous_traj.csv', # mp_train.csv for fine-tuning
-    name = 'train_MP',
+    path= '/home/zhongpc/chggen/cond_gen/data/hui_amorphous_relax/train.csv', # mp_train.csv for fine-tuning
+    name = 'train_Hui',
     prop_list = [],
 )
 
 val_dataset = CHGNetDataset(
-    path= '/home/zhongpc/chggen/cond_gen/data/hui_amorphous_traj.csv', # mp_val.csv for fine-tuning
-    name = 'val_MP',
+    path= '/home/zhongpc/chggen/cond_gen/data/hui_amorphous_relax/val.csv', # mp_val.csv for fine-tuning
+    name = 'val_Hui',
     prop_list = [],
 )
 
@@ -69,9 +69,9 @@ checkpoint_callback = ModelCheckpoint(
 
 trainer = pl.Trainer(
     accelerator = "gpu", 
-    devices = [6],
+    devices = [5],
     max_epochs= 50,
-    callbacks=[checkpoint_callback, TQDMProgressBar(refresh_rate = 1)],
+    callbacks=[checkpoint_callback, TQDMProgressBar(refresh_rate = 100)],
     log_every_n_steps=100,
     gradient_clip_val=0.1,
     default_root_dir= MODEL_DIR, # './data/test_models/mp_pretrain_con/',

@@ -922,6 +922,49 @@ def get_pymatgen_structure(
         s_list.append(s_gen)
     return s_list 
 
+
+
+
+def get_tensor_from_structure(structure: Structure):
+    """Get tensor from pymatgen structure."""
+
+    s0 = structure
+
+    cur_atom_types = []
+    cur_frac_coords = []
+    for site in s0.sites:
+        cur_atom_types.append(site.specie.Z)
+        cur_frac_coords.append(site.frac_coords)
+    cur_atom_types = torch.tensor(cur_atom_types, dtype = torch.int32)
+
+    # Add random coordinates for host and inserted ions.
+    # cur_frac_coords = torch.rand(len(cur_atom_types), 3, requires_grad = False, dtype = torch.float32)
+    cur_frac_coords = torch.tensor(cur_frac_coords, dtype = torch.float32)
+
+    # Cell information.
+    num_atoms = torch.tensor([len(cur_atom_types)], dtype = torch.int32)
+    angles = torch.tensor([s0.lattice.angles],)
+    lengths = torch.tensor([s0.lattice.lengths],)
+
+    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths
+
+
+
+# Construct dataloader
+def get_batch_tensor_from_structures(structures: List[Structure]):
+    cur_atom_types, cur_frac_coords, num_atoms, angles, lengths = \
+        zip(*[get_tensor_from_structure(structure= structure) for structure in structures])
+
+    # Construct batch data
+    cur_atom_types = torch.cat(cur_atom_types, axis = 0)
+    cur_frac_coords = torch.cat(cur_frac_coords, axis = 0)
+    num_atoms = torch.cat(num_atoms, axis = 0)
+    angles = torch.cat(angles, axis = 0)
+    lengths = torch.cat(lengths, axis = 0)
+
+    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths
+
+
 def mkdir(path: str):
     """Make directory.
 

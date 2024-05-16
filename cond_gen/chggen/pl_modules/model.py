@@ -202,6 +202,30 @@ class CHGGen(BaseModule):
             'target_frac_coords': batch.frac_coords,
             'target_atom_types': batch.atom_types,
         }
+    
+
+    def predict_structures(self, cur_atom_types, cur_frac_coords, num_atoms, lengths, angles):
+
+        cur_cart_coords = frac_to_cart_coords(
+                frac_coords=cur_frac_coords, 
+                lengths=lengths, 
+                angles=angles, 
+                num_atoms=num_atoms, 
+            )
+
+
+        # Compute score term
+        with torch.no_grad():   
+            pred_cart_coord_diff = self.decoder(
+                pred_cart_coords=cur_cart_coords, 
+                pred_atom_types=cur_atom_types, 
+                num_atoms=num_atoms, 
+                lengths=lengths, 
+                angles=angles,
+            )
+
+
+        return pred_cart_coord_diff
 
     def langevin_dynamics(
         self, 
