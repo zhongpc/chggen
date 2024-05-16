@@ -15,7 +15,7 @@ from chggen.common.data_utils import (
     frac_to_cart_coords, 
     min_distance_sqr_pbc,
 )
-from chggen.pl_modules.decoder import NequipTableDecoder, GemNetTDecoder
+from chggen.pl_modules.decoder import NequipDecoder, GemNetTDecoder
 
 
 
@@ -114,7 +114,9 @@ class CHGGen(BaseModule):
             'irreps_edge': '32x0e + 32x1e + 8x2e',
             'irreps_out': '1x1e',
             'num_convs': 5,
-            'radial_neurons': [16,64],
+            'num_element_emb': 32,
+            'num_radical_emb': 32,
+            'radial_neurons': [32,64],
             'lr': 1e-3,
             'lr_scheduler': None,
             'lr_shrink': 0.01,
@@ -125,7 +127,7 @@ class CHGGen(BaseModule):
         self.save_hyperparameters(default_hyperparameters)
 
         # Initialize decoder.
-        self.decoder = NequipTableDecoder(
+        self.decoder = NequipDecoder(
             model_version = self.hparams.decoder,
             max_neighbors = self.hparams.max_neighbors,
             cutoff = self.hparams.cutoff,
@@ -135,6 +137,8 @@ class CHGGen(BaseModule):
             irreps_edge    = self.hparams.irreps_edge,
             irreps_out     = self.hparams.irreps_out,
             num_convs      = self.hparams.num_convs,
+            element_embedding_dim = self.hparams.num_element_emb,
+            radical_embedding_dim = self.hparams.num_radical_emb,
             radial_neurons = self.hparams.radial_neurons,
         )
             

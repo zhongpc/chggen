@@ -13,7 +13,7 @@ from chggen.pl_modules.nequip.e3nn_nequip import NequIP_EE, NequIP_condition
 from chggen.pl_modules.gemnet.gemnet import GemNetT
 
 
-class NequipTableDecoder(nn.Module):
+class NequipDecoder(nn.Module):
     """Decoder with nequip equipped with periodic table information."""
 
     def __init__(
@@ -27,15 +27,17 @@ class NequipTableDecoder(nn.Module):
         irreps_edge    = '32x0e + 32x1e + 8x2e',
         irreps_out     = '1x1e',
         num_convs      = 5,
-        radial_neurons = [16, 64],
+        element_embedding_dim = 32,
+        radical_embedding_dim = 32,
+        radial_neurons = [32, 64],
     ):
-        super(NequipTableDecoder, self).__init__()
+        super(NequipDecoder, self).__init__()
         self.cutoff = cutoff
         self.max_num_neighbors = max_neighbors
 
         if model_version == 'nequip_ee':      # Element embedding
             self.nequip = NequIP_EE(
-                init_embed = InitialEmbedding_EE(num_species=118, cutoff=cutoff, emb_dim=32),
+                init_embed = InitialEmbedding_EE(num_species=118, cutoff=cutoff, emb_dim= element_embedding_dim, radical_dim = radical_embedding_dim),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
                 irreps_hidden  = irreps_hidden,
@@ -48,7 +50,7 @@ class NequipTableDecoder(nn.Module):
 
         elif model_version == 'nequip_cond':      # Element embedding with condition
             self.nequip = NequIP_condition(
-                init_embed = InitialEmbedding_condition(num_species=118, cutoff=cutoff, emb_dim=32),
+                init_embed = InitialEmbedding_EE(num_species=118, cutoff=cutoff, emb_dim= element_embedding_dim, radical_dim = radical_embedding_dim),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
                 irreps_hidden  = irreps_hidden,

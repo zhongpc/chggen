@@ -22,11 +22,11 @@ def condition_embedding(x, embedding_dim=16, const=1000):
 
 # radial embedding
 class InitialEmbedding_EE(nn.Module):
-    def __init__(self, num_species, cutoff, emb_dim):
+    def __init__(self, num_species, cutoff, emb_dim, radical_dim):
         super().__init__()
         self.embed_node_x = nn.Embedding(num_species, emb_dim)
         self.embed_node_z = nn.Embedding(num_species, emb_dim)
-        self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis=16)
+        self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis= radical_dim)
     
     def forward(self, data):
         # Embed node
@@ -46,14 +46,14 @@ class InitialEmbedding_EE(nn.Module):
 
 # radial embedding
 class InitialEmbedding_condition(nn.Module):
-    def __init__(self, num_species, cutoff, emb_dim):
+    def __init__(self, num_species, cutoff, emb_dim, radical_dim):
         super().__init__()
         self.emb_dim = emb_dim
         self.embed_node_x = nn.Embedding(num_species, emb_dim)
         self.embed_node_z = nn.Embedding(num_species, emb_dim)
         self.scale_W = nn.Linear(emb_dim, emb_dim, bias=False)
         # self.embed_condition = nn.Embedding(1, cond_dim)
-        self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis=16)
+        self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis= radical_dim)
     
     def forward(self, data):
         # Embed node
