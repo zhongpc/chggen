@@ -47,6 +47,9 @@ model_hparams ={'latent_dim': 64,           # Model dimension.
                 'irreps_hidden': '32x0e + 32x1e',
                 'irreps_edge': '32x0e + 32x1e + 16x2e',
                 'num_convs': 4,             # Number of convolutional layers.
+                'num_element_emb': 32, # number of element embedding.
+                'num_radical_emb': 32, # number of radical embedding.
+                'radial_neurons': [32,64], # used for the radical MLP to form the radial embedding.
                 'lr': 1e-3,                 
                 'lr_scheduler': 'exp_decay',# Learning rate scheduler.
                 'lr_shrink': 1,          # Learning rate shrink.
