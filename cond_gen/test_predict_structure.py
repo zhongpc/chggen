@@ -44,29 +44,31 @@ chggen_cond = CHGGen(hparams_dict=model_hparams_cond)
 ### test the single structure version ###
 
 structure = Structure.from_file('./MnZnO2.cif')
-(cur_atom_types, cur_frac_coords, num_atoms, angles, lengths) = get_tensor_from_structure(structure)
+(cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties) = get_tensor_from_structure(structure)
 # property_tensor = 
 
 pred_cart_coords = chggen_cond.predict_structures(cur_atom_types = cur_atom_types, 
                                              cur_frac_coords = cur_frac_coords, 
                                              num_atoms = num_atoms, 
                                              lengths = lengths, 
-                                             angles = angles)
+                                             angles = angles,
+                                             properties= None,)
 
 
 
-# ### test the batch version ###
-# structure_list = [structure] * 10
-# batch_tensor = get_batch_tensor_from_structures(structure_list)
+### test the batch version ###
+structure_list = [structure] * 10
+property_list = [2] * 10
+batch_tensor = get_batch_tensor_from_structures(structure_list, properties= property_list)
 
-# pred_cart_coords_batch = chggen.predict_structures(cur_atom_types = batch_tensor[0], 
-#                                               cur_frac_coords = batch_tensor[1], 
-#                                              num_atoms = batch_tensor[2], 
-#                                              lengths = batch_tensor[3], 
-#                                              angles = batch_tensor[4])
+pred_cart_coords_batch = chggen_cond.predict_structures(cur_atom_types = batch_tensor[0], 
+                                              cur_frac_coords = batch_tensor[1], 
+                                             num_atoms = batch_tensor[2], 
+                                             lengths = batch_tensor[3], 
+                                             angles = batch_tensor[4])
 
 
-# print(pred_cart_coords_batch.shape)
-# print("Done")
+print(pred_cart_coords_batch.shape)
+print("Done")
                                              
                                 
