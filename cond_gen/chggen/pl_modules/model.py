@@ -113,7 +113,7 @@ class CHGGen(BaseModule):
             'irreps_hidden': '32x0e + 32x1e + 8x2e',
             'irreps_edge': '32x0e + 32x1e + 8x2e',
             'irreps_out': '1x1e',
-            'num_convs': 5,
+            'num_convs': 4,
             'num_element_emb': 32,
             'num_radical_emb': 32,
             'radial_neurons': [32,64],
@@ -121,6 +121,7 @@ class CHGGen(BaseModule):
             'lr_scheduler': None,
             'lr_shrink': 0.01,
             'gamma': 1.0,
+            'if_linear': False, # whether to times the property for property guidance hidden layer.
         }
         default_hyperparameters.update(hparams_dict)
         
@@ -140,16 +141,17 @@ class CHGGen(BaseModule):
             element_embedding_dim = self.hparams.num_element_emb,
             radical_embedding_dim = self.hparams.num_radical_emb,
             radial_neurons = self.hparams.radial_neurons,
+            if_linear = self.hparams.if_linear,
         )
             
-        # For property prediction.
-        if self.hparams.predict_property:
-            self.fc_property = build_mlp(
-                self.hparams.latent_dim, 
-                self.hparams.hidden_dim,
-                self.hparams.fc_num_layers, 
-                self.hparams.property_dim,
-            )
+        # # For property prediction.
+        # if self.hparams.predict_property:
+        #     self.fc_property = build_mlp(
+        #         self.hparams.latent_dim, 
+        #         self.hparams.hidden_dim,
+        #         self.hparams.fc_num_layers, 
+        #         self.hparams.property_dim,
+        #     )
         
     def forward(
         self, 

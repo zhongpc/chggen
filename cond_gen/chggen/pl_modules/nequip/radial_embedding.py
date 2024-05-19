@@ -61,9 +61,10 @@ class InitialEmbedding_EE(nn.Module):
 
 # radial embedding
 class InitialEmbedding_condition(nn.Module):
-    def __init__(self, num_species, cutoff, emb_dim, radical_dim, fc_num_layers = 2, hidden_dim = None):
+    def __init__(self, num_species, cutoff, emb_dim, radical_dim, fc_num_layers = 2, hidden_dim = None, if_linear = False):
         super().__init__()
         self.emb_dim = emb_dim
+        self.if_linear = if_linear
         self.embed_node_x = nn.Embedding(num_species, emb_dim)
         self.embed_node_z = nn.Embedding(num_species, emb_dim)
         self.embed_edge   = partial(bessel, start=0.0, end=cutoff, num_basis= radical_dim)
@@ -83,6 +84,9 @@ class InitialEmbedding_condition(nn.Module):
         node_z = self.embed_node_z(x)
 
         node_cond = self.prop_adapter(condition)
+        if self.if_linear:
+            node_cond = node_cond * condition
+
         
         data.h_node_x = node_x 
         data.h_node_z = node_z 

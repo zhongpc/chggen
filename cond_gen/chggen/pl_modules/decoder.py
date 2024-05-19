@@ -20,7 +20,7 @@ class NequipDecoder(nn.Module):
         self,
         max_neighbors = 40,
         cutoff = 6.,
-        model_version = 'nequip_pte',
+        model_version = 'nequip_ee',
         irreps_node_x  = '32x0e',
         irreps_node_z  = '32x0e',
         irreps_hidden  = '32x0e + 32x1e + 8x2e',
@@ -30,6 +30,7 @@ class NequipDecoder(nn.Module):
         element_embedding_dim = 32,
         radical_embedding_dim = 32,
         radial_neurons = [32, 64],
+        if_linear = False,
     ):
         super(NequipDecoder, self).__init__()
         self.cutoff = cutoff
@@ -50,7 +51,7 @@ class NequipDecoder(nn.Module):
 
         elif model_version == 'nequip_cond':      # Element embedding with condition
             self.nequip = NequIP_condition(
-                init_embed = InitialEmbedding_condition(num_species=118, cutoff=cutoff, emb_dim= element_embedding_dim, radical_dim = radical_embedding_dim),
+                init_embed = InitialEmbedding_condition(num_species=118, cutoff=cutoff, emb_dim= element_embedding_dim, radical_dim = radical_embedding_dim, if_linear=if_linear),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
                 irreps_hidden  = irreps_hidden,
@@ -120,6 +121,7 @@ class NequipDecoder(nn.Module):
             property = torch.zeros_like(pred_atom_types, dtype = torch.float32, device = pred_atom_types.device)
         )
         pred_cart_coord_diff_0 = self.nequip(data_0)
+
 
         if properties is None or properties.nelement() == 0: # no property guidance
             # print("No property guidance")

@@ -37,6 +37,7 @@ model_hparams_cond ={'latent_dim': 64,           # Model dimension.
                 'lr': 1e-3,                 
                 'lr_scheduler': 'exp_decay',# Learning rate scheduler.
                 'lr_shrink': 1,          # Learning rate shrink.
+                'if_linear': True,       # whether to times the property for property guidance hidden layer. used for temperatue guidance.
                 # 'num_batch': len(datamodule.train_dataloader()),    # For warmup scheduler.
                 }
 
