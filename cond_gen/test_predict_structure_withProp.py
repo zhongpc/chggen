@@ -26,6 +26,8 @@ model_hparams_cond ={'latent_dim': 64,           # Model dimension.
                 'decoder': 'nequip_cond',     # Decoder type.
                 'max_neighbors': 60,
                 'cutoff': 6.,
+                'irreps_node_x': '32x0e',
+                'irreps_node_z': '32x0e', # must be the same as element embedding to make sure the cond_addition works.
                 'irreps_hidden': '32x0e + 32x1e',
                 'irreps_edge': '32x0e + 32x1e + 16x2e',
                 'num_convs': 4,             # Number of convolutional layers.
