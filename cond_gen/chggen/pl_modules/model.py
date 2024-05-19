@@ -192,7 +192,6 @@ class CHGGen(BaseModule):
         )
         
         # Compute loss.
-
         coord_loss = self.coord_loss(
             pred_cart_coord_diff, 
             cart_coords, 
@@ -208,7 +207,7 @@ class CHGGen(BaseModule):
         }
     
 
-    def predict_structures(self, cur_atom_types, cur_frac_coords, num_atoms, lengths, angles):
+    def predict_structures(self, cur_atom_types, cur_frac_coords, num_atoms, lengths, angles, properties = None):
 
         cur_cart_coords = frac_to_cart_coords(
                 frac_coords=cur_frac_coords, 
@@ -226,6 +225,7 @@ class CHGGen(BaseModule):
                 num_atoms=num_atoms, 
                 lengths=lengths, 
                 angles=angles,
+                properties = properties,
             )
 
 

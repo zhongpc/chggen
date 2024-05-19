@@ -50,7 +50,7 @@ class NequipDecoder(nn.Module):
 
         elif model_version == 'nequip_cond':      # Element embedding with condition
             self.nequip = NequIP_condition(
-                init_embed = InitialEmbedding_EE(num_species=118, cutoff=cutoff, emb_dim= element_embedding_dim, radical_dim = radical_embedding_dim),
+                init_embed = InitialEmbedding_condition(num_species=118, cutoff=cutoff, emb_dim= element_embedding_dim, radical_dim = radical_embedding_dim),
                 irreps_node_x  = irreps_node_x,
                 irreps_node_z  = irreps_node_z,
                 irreps_hidden  = irreps_hidden,
@@ -122,10 +122,11 @@ class NequipDecoder(nn.Module):
         pred_cart_coord_diff_0 = self.nequip(data_0)
 
         if properties is None or properties.nelement() == 0: # no property guidance
-            # print("No property guidance")
+            print("No property guidance")
             return pred_cart_coord_diff_0
         else:       
-            properties = properties.repeat_interleave(num_atoms, dim=0)
+            properties = properties.repeat_interleave(num_atoms, dim=0) # expand the property to each atom node
+
             data = Data(
             x       = pred_atom_types, # do not need minus 1 to accomodate the index. This is done in Nequip class. 
             pbc     = True,

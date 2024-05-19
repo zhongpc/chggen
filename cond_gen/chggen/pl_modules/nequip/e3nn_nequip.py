@@ -205,6 +205,9 @@ class NequIP_condition(nn.Module):
         for layer in self.interactions:
             h_node_x = layer(h_node_x, h_node_z, edge_index, edge_sh, h_edge)
 
+        # data.h_node_cond contains the condition embedding information.
+        h_node_z = h_node_z + data.h_node_cond # Add the condition embedding to the node embedding
+
         # Final output layer
         return self.out(h_node_x, h_node_z)
 

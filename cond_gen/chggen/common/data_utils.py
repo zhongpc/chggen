@@ -925,7 +925,8 @@ def get_pymatgen_structure(
 
 
 
-def get_tensor_from_structure(structure: Structure):
+def get_tensor_from_structure(structure: Structure, 
+                              property = None):
     """Get tensor from pymatgen structure."""
 
     s0 = structure
@@ -946,14 +947,18 @@ def get_tensor_from_structure(structure: Structure):
     angles = torch.tensor([s0.lattice.angles],)
     lengths = torch.tensor([s0.lattice.lengths],)
 
-    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths
+    property = torch.tensor([0], dtype = torch.float32) if property is None else torch.tensor([property], dtype= torch.float32)
+
+    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, property
 
 
 
 # Construct dataloader
-def get_batch_tensor_from_structures(structures: List[Structure]):
-    cur_atom_types, cur_frac_coords, num_atoms, angles, lengths = \
-        zip(*[get_tensor_from_structure(structure= structure) for structure in structures])
+def get_batch_tensor_from_structures(structures: List[Structure],
+                                     properties = None):
+    if properties is not None:
+        cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties = \
+            zip(*[get_tensor_from_structure(structure= structure, property= property) for structure, property in zip(structures, properties)])
 
     # Construct batch data
     cur_atom_types = torch.cat(cur_atom_types, axis = 0)
@@ -961,8 +966,9 @@ def get_batch_tensor_from_structures(structures: List[Structure]):
     num_atoms = torch.cat(num_atoms, axis = 0)
     angles = torch.cat(angles, axis = 0)
     lengths = torch.cat(lengths, axis = 0)
+    properties = torch.cat(properties, axis = 0)
 
-    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths
+    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties
 
 
 def mkdir(path: str):

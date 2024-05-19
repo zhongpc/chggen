@@ -25,7 +25,7 @@ model_hparams_cond ={'latent_dim': 64,           # Model dimension.
                 'cost_property': 0,
                 'decoder': 'nequip_cond',     # Decoder type.
                 'max_neighbors': 60,
-                'cutoff': 7.,
+                'cutoff': 6.,
                 'irreps_hidden': '32x0e + 32x1e',
                 'irreps_edge': '32x0e + 32x1e + 16x2e',
                 'num_convs': 4,             # Number of convolutional layers.
@@ -44,29 +44,36 @@ chggen_cond = CHGGen(hparams_dict=model_hparams_cond)
 ### test the single structure version ###
 
 structure = Structure.from_file('./MnZnO2.cif')
-(cur_atom_types, cur_frac_coords, num_atoms, angles, lengths) = get_tensor_from_structure(structure)
+(cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties) = get_tensor_from_structure(structure, property= 2)
 # property_tensor = 
 
 pred_cart_coords = chggen_cond.predict_structures(cur_atom_types = cur_atom_types, 
                                              cur_frac_coords = cur_frac_coords, 
                                              num_atoms = num_atoms, 
                                              lengths = lengths, 
-                                             angles = angles)
+                                             angles = angles,
+                                             properties = properties)
 
 
 
 # ### test the batch version ###
-# structure_list = [structure] * 10
-# batch_tensor = get_batch_tensor_from_structures(structure_list)
+structure_list = [structure] * 10
+property_list = [2] * 10
 
-# pred_cart_coords_batch = chggen.predict_structures(cur_atom_types = batch_tensor[0], 
-#                                               cur_frac_coords = batch_tensor[1], 
-#                                              num_atoms = batch_tensor[2], 
-#                                              lengths = batch_tensor[3], 
-#                                              angles = batch_tensor[4])
+batch_tensor = get_batch_tensor_from_structures(structure_list, property_list)
+
+pred_cart_coords_batch = chggen_cond.predict_structures(cur_atom_types = batch_tensor[0], 
+                                              cur_frac_coords = batch_tensor[1], 
+                                             num_atoms = batch_tensor[2], 
+                                             lengths = batch_tensor[3], 
+                                             angles = batch_tensor[4],
+                                             properties = batch_tensor[5])
 
 
-# print(pred_cart_coords_batch.shape)
-# print("Done")
+print(pred_cart_coords_batch.shape)
+
+
+
+print("Done")
                                              
                                 
