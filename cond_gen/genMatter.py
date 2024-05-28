@@ -73,7 +73,7 @@ def run_langevin_from_structures(model,
     all_num_atoms = torch.tensor(all_num_atoms, device = device)
 
     ###  return the results ###
-    results = model.annealing_dynamics(
+    results = model.reverse_SDE(
 		    lengths=all_lengths,
 		    angles=all_angles,
 		    composition=all_atom_types,
@@ -146,7 +146,7 @@ def run_langevin_fromLattice(model,
     
 
     ###  return the results ###
-    results = model.annealing_dynamics(
+    results = model.reverse_SDE(
         lengths=lengths,
         angles=angles,
         composition=cur_atom_types,
@@ -241,7 +241,7 @@ def generate_crystal(fv_dict):
             ### analyze space group and refine ###
             analyzer_init = SpacegroupAnalyzer(structure= structure, symprec= 0.2, angle_tolerance= 15)
             analyzer_CG = SpacegroupAnalyzer(structure= s_relax, symprec= 2.0, angle_tolerance= 30)
-            analyzer = SpacegroupAnalyzer(structure= s_relax, symprec= 0.2, angle_tolerance= 15)
+            analyzer = SpacegroupAnalyzer(structure= s_relax, symprec= 0.15, angle_tolerance= 15)
             try:
                 s_CG = analyzer_CG.get_conventional_standard_structure()
                 print("init spacegroup: ", analyzer_init.get_space_group_symbol())
@@ -284,14 +284,15 @@ def generate_crystal(fv_dict):
         else:
             mkdir(ROOT_DIR)
             df.to_csv(ROOT_DIR + '/mutation_gen_summary.csv', index=False, header=True)
+
     print("Done")
 
 
     
     
 PPD_PATH = "/home/zhongpc/chggen/host_gen/file_trans/2023-02-07-ppd-mp.pkl.gz"
-CUDA_DEVICE = "cuda:4"
-CHGGEN_PATH = "/home/zhongpc/chggen/host_gen/file_trans/constant_lr_epoch=45-val_loss=0.84.ckpt"
+CUDA_DEVICE = "cuda"
+CHGGEN_PATH = "/home/zhongpc/chggen/cond_gen/data/trained_models/mp_pretrain_uncond/epoch=45-val_loss=0.81.ckpt"
 
 # e_hull_calculator = EHullCalculator(PPD_PATH)
     
