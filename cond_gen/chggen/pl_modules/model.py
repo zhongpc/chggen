@@ -233,7 +233,7 @@ class CHGGen(BaseModule):
 
         return pred_cart_coord_diff
 
-    def langevin_dynamics(
+    def reverse_SDE(
         self, 
         lengths: torch.Tensor,
         angles: torch.Tensor,
@@ -247,14 +247,14 @@ class CHGGen(BaseModule):
             lengths (tensor): lattice lengths of shape (batch_size, 3).
             angles (tensor): lattice angles of shape (batch_size, 3).
             composition(tensor): composition of shape (batch_size, num_atom_per_structure).
-            ld_kwargs (SimpleNameSpace): arguments for annealed langevin dynamics sampling:
-                sigma_begin (float, optional): initial sigma to use in annealed langevin dynamics.
-                sigma_end (float, optional): final sigma to use in annealed langevin dynamics.
-                num_noise_level (int): number of noise level.
+            ld_kwargs (SimpleNameSpace): arguments for reverse SDE sampling:
+                sigma_begin (float, optional): initial sigma to use in reverse SDE
+                sigma_end (float, optional): final sigma to use in reverse SDE.
+                num_noise_level (int): number of noise levels.
                 n_step_each (int): number of steps for each sigma level.
-                min_sigma (float): minimum sigma to use in annealed langevin dynamics.
+                min_sigma (float): minimum sigma to use in reverse SDE.
                 save_traj (bool): if <True>, save the entire LD trajectory.
-                disable_bar (bool): disable the progress bar of langevin dynamics.
+                disable_bar (bool): disable the progress bar of reverse SDE.
         """
         sigma_begin = ld_kwargs.sigma_begin if hasattr(ld_kwargs, 'sigma_begin') \
             else self.hparams.sigma_begin
@@ -381,7 +381,7 @@ class CHGGen(BaseModule):
 
         return output_dict
 
-    def conditional_langevin_dynamics(
+    def conditional_reverse_SDE(
         self,
         lengths: torch.Tensor,
         angles: torch.Tensor,
