@@ -10,6 +10,7 @@ from chggen.common.data_utils import mkdir, get_batch_tensor_from_structures, ge
 
 from pymatgen.core import Structure
 
+structure = Structure.from_file('./MnZnO2.cif')
 
 
 # Initialize model.
@@ -44,7 +45,6 @@ chggen_cond = CHGGen(hparams_dict=model_hparams_cond)
 
 ### test the single structure version ###
 
-structure = Structure.from_file('./MnZnO2.cif')
 (cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties) = get_tensor_from_structure(structure)
 # property_tensor = 
 
