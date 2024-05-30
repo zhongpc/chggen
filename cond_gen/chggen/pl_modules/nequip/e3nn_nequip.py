@@ -329,9 +329,9 @@ class NequIP_EF(nn.Module):
 
         ## TODO: get the Cartesian coordinates from data
 
-        F_auto_diff = torch.autograd.grad(E.sum(), cart_coords, create_graph=True)[0] # automatic differentiation to get force
+        F_auto_diff = torch.autograd.grad(E.sum(), data.cart_coords, create_graph=True) # automatic differentiation to get force
 
-        return (E, F)
+        return E.sum(), F, F_auto_diff
 
 
 

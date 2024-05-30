@@ -105,7 +105,7 @@ class CHGGen(BaseModule):
             'predict_property': False, 'num_noise_level': 50, 
             'cost_coord': 10.0, 'cost_property': 1.0,
             'beta': 0.01,
-            'decoder': 'nequip_pte',
+            'decoder': 'nequip_ee',
             'max_neighbors': 50,
             'cutoff': 6.,
             'irreps_node_x': '32x0e',
@@ -122,6 +122,7 @@ class CHGGen(BaseModule):
             'lr_shrink': 0.01,
             'gamma': 1.0,
             'if_linear': False, # whether to times the property for property guidance hidden layer.
+            'training_task': 'denoise',
         }
         default_hyperparameters.update(hparams_dict)
         
@@ -152,6 +153,89 @@ class CHGGen(BaseModule):
         #         self.hparams.fc_num_layers, 
         #         self.hparams.property_dim,
         #     )
+
+    def forward_denoise(self, batch):
+        """Forward pass for denoising training task."""
+        # Sample noise levels.
+        used_sigmas_per_structure = self.get_sigma(
+            sigma_begin=self.hparams.sigma_begin,
+            sigma_end=self.hparams.sigma_end,
+            num_noise_level=batch.num_atoms.size(0),
+            SDE_type='VE',
+            sampler='random',
+        ).to(self.device)
+        used_sigmas_per_atom = used_sigmas_per_structure\
+            .repeat_interleave(batch.num_atoms, dim=0)
+            
+        # Add noise to the cartesian coordinates.
+        cart_noises_per_atom = torch.randn_like(batch.frac_coords) \
+            * used_sigmas_per_atom[:, None]
+        
+        cart_coords = frac_to_cart_coords(
+            frac_coords=batch.frac_coords, 
+            lengths=batch.lengths, 
+            angles=batch.angles, 
+            num_atoms=batch.num_atoms,
+        )
+        cart_coords = cart_coords + cart_noises_per_atom
+
+        # batch.properties $ [batch, 1]
+
+        pred_cart_coord_diff  = self.decoder(
+            pred_cart_coords=cart_coords, 
+            pred_atom_types=batch.atom_types, 
+            num_atoms=batch.num_atoms, 
+            lengths=batch.lengths, 
+            angles=batch.angles,
+            gamma = self.hparams.gamma,
+            properties = batch.properties,
+        )
+        
+        # Compute loss.
+        coord_loss = self.coord_loss(
+            pred_cart_coord_diff, 
+            cart_coords, 
+            used_sigmas_per_atom, 
+            batch,
+        )
+
+        return {
+            'coord_loss': coord_loss,
+            'pred_cart_coord_diff': pred_cart_coord_diff,
+            'target_frac_coords': batch.frac_coords,
+            'target_atom_types': batch.atom_types,
+        }
+    
+    def forward_EF(self, batch):
+
+        cart_coords = frac_to_cart_coords(
+            frac_coords=batch.frac_coords, 
+            lengths=batch.lengths, 
+            angles=batch.angles, 
+            num_atoms=batch.num_atoms,
+        )
+
+        cart_coords.requires_grad = True
+ 
+        E, F_pseudo, F_auto_diff = self.decoder.compute_EF(
+            pred_cart_coords= cart_coords, 
+            pred_atom_types=batch.atom_types, 
+            num_atoms=batch.num_atoms, 
+            lengths=batch.lengths, 
+            angles=batch.angles,
+        )
+
+        # Compute loss.
+        EF_loss = self.EF_loss(
+            E, 
+            F_auto_diff, 
+            batch,
+        )
+
+
+        return
+
+
         
     def forward(
         self, 
@@ -209,16 +293,17 @@ class CHGGen(BaseModule):
         }
     
 
-    def predict_structures(self, cur_atom_types, cur_frac_coords, num_atoms, lengths, angles, properties = None):
-
+    def compute_structures(self, cur_atom_types, cur_frac_coords, num_atoms, lengths, angles, properties = None):
+        """
+        Compute the score of given structures
+        """
         cur_cart_coords = frac_to_cart_coords(
                 frac_coords=cur_frac_coords, 
                 lengths=lengths, 
                 angles=angles, 
                 num_atoms=num_atoms, 
             )
-
-
+        
         # Compute score term
         with torch.no_grad():   
             pred_cart_coord_diff = self.decoder(
@@ -232,6 +317,35 @@ class CHGGen(BaseModule):
 
 
         return pred_cart_coord_diff
+    
+
+
+    def predict_structures(self, cur_atom_types, cur_frac_coords, num_atoms, lengths, angles, properties = None):
+        """
+        Predict the E, F, and F_auto_diff of the given structures
+        """
+
+        cur_cart_coords = frac_to_cart_coords(
+                frac_coords=cur_frac_coords, 
+                lengths=lengths, 
+                angles=angles, 
+                num_atoms=num_atoms, 
+            )
+        cur_cart_coords.requires_grad = True
+        
+        # Compute score term
+        # with torch.no_grad():   
+        E, F_pseudo, F_auto_diff = self.decoder.compute_EF(
+            pred_cart_coords=cur_cart_coords, 
+            pred_atom_types=cur_atom_types, 
+            num_atoms=num_atoms, 
+            lengths=lengths, 
+            angles=angles,
+            # properties = properties,
+        )
+
+
+        return E, F_pseudo, F_auto_diff
 
     def reverse_SDE(
         self, 

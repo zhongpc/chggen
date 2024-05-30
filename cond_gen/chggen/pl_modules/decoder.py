@@ -9,7 +9,7 @@ from chggen.common.data_utils import (
     cart_to_frac_coords,
 )
 from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding_EE, InitialEmbedding_condition
-from chggen.pl_modules.nequip.e3nn_nequip import NequIP_EE, NequIP_condition
+from chggen.pl_modules.nequip.e3nn_nequip import NequIP_EE, NequIP_condition, NequIP_EF
 from chggen.pl_modules.gemnet.gemnet import GemNetT
 
 
@@ -26,6 +26,7 @@ class NequipDecoder(nn.Module):
         irreps_hidden  = '32x0e + 32x1e + 8x2e',
         irreps_edge    = '32x0e + 32x1e + 8x2e',
         irreps_out     = '1x1e',
+        irreps_scalar = '1x0e',
         num_convs      = 5,
         element_embedding_dim = 32,
         radical_embedding_dim = 32,
@@ -57,6 +58,20 @@ class NequipDecoder(nn.Module):
                 irreps_hidden  = irreps_hidden,
                 irreps_edge    = irreps_edge,
                 irreps_out     = irreps_out,
+                num_convs      = num_convs ,
+                radial_neurons = radial_neurons,
+                num_neighbors  = self.max_num_neighbors / 2,
+            )
+
+        elif model_version == 'nequip_EF':      # Element embedding with condition
+            self.nequip = NequIP_EF(
+                init_embed = InitialEmbedding_condition(num_species=118, cutoff=cutoff, emb_dim= element_embedding_dim, radical_dim = radical_embedding_dim, if_linear=if_linear),
+                irreps_node_x  = irreps_node_x,
+                irreps_node_z  = irreps_node_z,
+                irreps_hidden  = irreps_hidden,
+                irreps_edge    = irreps_edge,
+                irreps_out     = irreps_out,
+                irreps_scalar  = irreps_scalar,
                 num_convs      = num_convs ,
                 radial_neurons = radial_neurons,
                 num_neighbors  = self.max_num_neighbors / 2,
@@ -138,6 +153,56 @@ class NequipDecoder(nn.Module):
             )
             pred_cart_coord_diff = self.nequip(data)
             return gamma* pred_cart_coord_diff + (1 - gamma) * pred_cart_coord_diff_0
+        
+
+    def compute_EF(self, pred_cart_coords, pred_atom_types, num_atoms, lengths, angles):
+        """Compute the energy and force of the structure.
+        
+        Args:
+            pred_cart_coords: (N_atoms, 3)
+            pred_atom_types: (N_atoms, ), need to use atomic number e.g. H = 1
+            num_atoms: (N_cryst,)
+            lengths: (N_cryst, 3)
+            angles: (N_cryst, 3)
+
+        """
+
+        edge_index, to_jimages, num_bonds = radius_graph_pbc(
+            pred_cart_coords, 
+            lengths, 
+            angles, 
+            num_atoms, 
+            self.cutoff, 
+            self.max_num_neighbors,
+            device=num_atoms.device,
+        )
+        
+        out = get_pbc_distances(
+            pred_cart_coords,
+            edge_index,
+            lengths,
+            angles,
+            to_jimages,
+            num_atoms,
+            num_bonds,
+            coord_is_cart=True,
+            return_offsets=True,
+            return_distance_vec=True,
+        )
+
+        data = Data(
+            x       = pred_atom_types, # do not need minus 1 to accomodate the index. This is done in Nequip class. 
+            pbc     = True,
+            edge_index = edge_index,
+            edge_attr = out['distance_vec'],
+            cart_coords = pred_cart_coords,
+            property = torch.zeros_like(pred_atom_types, dtype = torch.float32, device = pred_atom_types.device)
+        )
+
+        E, F_pseudo, F_auto_diff = self.nequip(data)
+
+        return E, F_pseudo, F_auto_diff
+
 
 
 class GemNetTDecoder(nn.Module):

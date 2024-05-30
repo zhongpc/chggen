@@ -933,9 +933,11 @@ def get_tensor_from_structure(structure: Structure,
 
     cur_atom_types = []
     cur_frac_coords = []
+    cur_cart_coords = []
     for site in s0.sites:
         cur_atom_types.append(site.specie.Z)
         cur_frac_coords.append(site.frac_coords)
+        cur_cart_coords.append(site.coords)
     cur_atom_types = torch.tensor(cur_atom_types, dtype = torch.int32)
 
     # Add random coordinates for host and inserted ions.
@@ -949,7 +951,7 @@ def get_tensor_from_structure(structure: Structure,
 
     property = torch.tensor([0], dtype = torch.float32) if property is None else torch.tensor([property], dtype= torch.float32)
 
-    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, property
+    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, property, cur_cart_coords
 
 
 
@@ -957,7 +959,7 @@ def get_tensor_from_structure(structure: Structure,
 def get_batch_tensor_from_structures(structures: List[Structure],
                                      properties = None):
     if properties is not None:
-        cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties = \
+        cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties, cur_cart_coords = \
             zip(*[get_tensor_from_structure(structure= structure, property= property) for structure, property in zip(structures, properties)])
 
     # Construct batch data

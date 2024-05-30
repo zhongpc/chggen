@@ -61,6 +61,7 @@ def process_pmg_structure(
         # 'cif': crystal_str,
         'lattice': structure.lattice.matrix,
         'frac_coords': structure.frac_coords,
+        'cart_coords': structure.cart_coords,
         'atom_types': structure.atomic_numbers,
         'lengths': np.array(structure.lattice.lengths),
         'angles': np.array(structure.lattice.angles),
@@ -70,6 +71,7 @@ def process_pmg_structure(
 
     lattice = data_dict['lattice']                      # (num of structure, 9)
     frac_coords = data_dict['frac_coords']
+    cart_coords = data_dict['cart_coords']
     atom_types = data_dict['atom_types']
     lengths = data_dict['lengths']
     angles = data_dict['angles']
@@ -81,6 +83,7 @@ def process_pmg_structure(
         x=torch.LongTensor(atom_types),
         lattices=torch.Tensor(lattice).view(1, -1),
         frac_coords=torch.Tensor(frac_coords),
+        cart_coords=torch.Tensor(cart_coords),
         atom_types=torch.LongTensor(atom_types),
         lengths = torch.Tensor(lengths).view(1, -1),
         angles = torch.Tensor(angles).view(1, -1),
