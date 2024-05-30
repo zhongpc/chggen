@@ -242,55 +242,12 @@ class CHGGen(BaseModule):
         batch,  
         training,           # Necessary parameter for pytorch_lightning.
     ):  
-        # Sample noise levels.
-        used_sigmas_per_structure = self.get_sigma(
-            sigma_begin=self.hparams.sigma_begin,
-            sigma_end=self.hparams.sigma_end,
-            num_noise_level=batch.num_atoms.size(0),
-            SDE_type='VE',
-            sampler='random',
-        ).to(self.device)
-        used_sigmas_per_atom = used_sigmas_per_structure\
-            .repeat_interleave(batch.num_atoms, dim=0)
-            
-        # Add noise to the cartesian coordinates.
-        cart_noises_per_atom = torch.randn_like(batch.frac_coords) \
-            * used_sigmas_per_atom[:, None]
-        
-        cart_coords = frac_to_cart_coords(
-            frac_coords=batch.frac_coords, 
-            lengths=batch.lengths, 
-            angles=batch.angles, 
-            num_atoms=batch.num_atoms,
-        )
-        cart_coords = cart_coords + cart_noises_per_atom
-
-        # batch.properties $ [batch, 1]
-
-        pred_cart_coord_diff  = self.decoder(
-            pred_cart_coords=cart_coords, 
-            pred_atom_types=batch.atom_types, 
-            num_atoms=batch.num_atoms, 
-            lengths=batch.lengths, 
-            angles=batch.angles,
-            gamma = self.hparams.gamma,
-            properties = batch.properties,
-        )
-        
-        # Compute loss.
-        coord_loss = self.coord_loss(
-            pred_cart_coord_diff, 
-            cart_coords, 
-            used_sigmas_per_atom, 
-            batch,
-        )
-
-        return {
-            'coord_loss': coord_loss,
-            'pred_cart_coord_diff': pred_cart_coord_diff,
-            'target_frac_coords': batch.frac_coords,
-            'target_atom_types': batch.atom_types,
-        }
+        if self.hparams.training_task == 'denoise':
+            return self.forward_denoise(batch)
+        elif self.hparams.training_task == 'EF':
+            return self.forward_EF(batch)
+        else:
+            raise NotImplementedError
     
 
     def compute_structures(self, cur_atom_types, cur_frac_coords, num_atoms, lengths, angles, properties = None):
@@ -924,6 +881,28 @@ class CHGGen(BaseModule):
                                target_atom_types, reduction='none')
         
         return scatter(loss, batch.batch, reduce='mean').mean()
+
+    def EF_loss(self, pred_E, pred_F, batch):
+        """
+        Compute the energy and force loss.
+
+        pred_E: predicted energy per atom from GNN node.
+        pred_F: predicted force per atom from GNN node.
+
+        """
+
+
+        ## TODO: finish the EF loss part.
+        pred_total_E = scatter(pred_E, batch.batch, reduce='sum')
+        target_total_E = batch.E
+
+        loss_F_per_atom = (batch.forces - pred_F )**2
+
+        scatter(loss_F_per_atom, batch.batch, reduce='mean').mean()
+        
+
+
+        return
 
     def coord_loss(
         self, 

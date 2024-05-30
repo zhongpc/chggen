@@ -331,7 +331,7 @@ class NequIP_EF(nn.Module):
 
         F_auto_diff = torch.autograd.grad(E.sum(), data.cart_coords, create_graph=True) # automatic differentiation to get force
 
-        return E.sum(), F, F_auto_diff
+        return E, F, F_auto_diff
 
 
 
