@@ -45,14 +45,14 @@ def generate_lattice_cell(lattice_type, volume):
         c = a
         lattice_params = (a, b, c, 90, 90, 90)
     elif lattice_type == 'monoclinic':
-        a = np.cbrt(volume / 1.5)
+        a = np.cbrt(volume / 1.5 / 0.984)
         b = 1.5 * a
         c = a
         beta = 100
         lattice_params = (a, b, c, 90, beta, 90)
 
     elif lattice_type == 'aP':
-        a = np.cbrt(volume) # scale = 0.963
+        a = np.cbrt(volume / 0.963) # scale = 0.963
         b = a
         c = a
         alpha = 80
@@ -60,11 +60,11 @@ def generate_lattice_cell(lattice_type, volume):
         gamma = 100
         lattice_params = (a, b, c, alpha, beta, gamma)
     elif lattice_type == 'hP':
-        a = np.sqrt(volume / (np.sqrt(3) / 2))
-        c = a
+        a = np.sqrt(volume / (np.sqrt(3) / 2) / 1.5)
+        c = a * 1.5
         lattice_params = (a, a, c, 90, 90, 120)
     elif lattice_type == 'hR':
-        a = np.cbrt(volume / 0.5)
+        a = np.cbrt(volume / 0.707)
         alpha = 60
         lattice_params = (a, a, a, alpha, alpha, alpha)
     else:
@@ -353,16 +353,9 @@ def generate_crystal(fv_dict):
                 prediction = model.predict_structure(structure)
                 E0_tot = prediction['e'] * structure.num_sites
                 Fmax = np.max(np.abs(prediction['f']))
-            except:
-                print("CHGNet prediction failed")
-                E0_tot = np.nan
-                Fmax = np.nan
 
-                continue
+                atoms = AseAtomsAdaptor().get_atoms(structure)
 
-
-            atoms = AseAtomsAdaptor().get_atoms(structure)
-            try:
                 result = chg_relaxer.relax(atoms= atoms,
                                     fmax = 0.1,
                                     steps = 2000,
@@ -371,8 +364,11 @@ def generate_crystal(fv_dict):
                                     # trajectory_path = None,
                 )
             except:
-                print("CHGNet Relaxation failed")
+                print("CHGNet prediction failed")
+                E0_tot = np.nan
+                Fmax = np.nan
                 continue
+
 
 
             s_relax = result["final_structure"]
@@ -452,7 +448,7 @@ def generate_crystal(fv_dict):
     
 PPD_PATH = "/home/zhongpc/chggen/host_gen/file_trans/2023-02-07-ppd-mp.pkl.gz"
 CUDA_DEVICE = "cuda"
-CHGGEN_PATH = "/home/zhongpc/chggen/cond_gen/data/trained_models/mp_train_cond_Ehull/epoch=19-val_loss=0.88.ckpt"
+CHGGEN_PATH = "/home/zhongpc/chggen/cond_gen/data/trained_models/mp_train_cond_Ehull/epoch=27-val_loss=0.87.ckpt"
 
 # e_hull_calculator = EHullCalculator(PPD_PATH)
     
