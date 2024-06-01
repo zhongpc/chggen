@@ -8,22 +8,18 @@ import multiprocessing as mp
 from chggen.pl_modules.model import CHGGen
 from chggen.common.data_utils import get_scaler, mkdir, get_pymatgen_structure
 
-from pymatgen.core import Structure, Composition, Element, Lattice
 from chgnet.model.model import CHGNet
 from chgnet.model.dynamics import StructOptimizer
 
+from pymatgen.core import Structure, Composition, Element, Lattice
 from pymatgen.io.ase import AseAtomsAdaptor
 from pymatgen.io.cif import CifWriter
 
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 import pandas as pd
 
-from e_hull_calculator import EHullCalculator
-
 import time
 from datetime import datetime
-
-import matplotlib.pyplot as plt
 
 import numpy as np
 
@@ -70,6 +66,39 @@ def generate_lattice_cell(lattice_type, volume):
     
     return lattice_params
 
+
+def get_coarse_grain_framework(structure: Structure,
+                                species = 'Li',
+                                sym_list = [0.1, 0.2, 0.5, 0.8, 1.0, 1.5, 2.0],
+                                angle_list = [10, 15, 15, 15, 20, 30, 30],
+                                ):
+    """ 
+    Coarse grain the framework of structure by removing the species in the species list.
+    """
+
+    structure.remove_oxidation_states()
+
+    for symprec, angle_tolerance in zip(sym_list, angle_list):
+        s_frame = structure.copy()
+        num_species = s_frame.composition[species]
+
+        s_frame.remove_species([species])
+
+        analyzer_CG = SpacegroupAnalyzer(structure= s_frame, 
+                                         symprec= symprec, 
+                                         angle_tolerance= angle_tolerance)
+        
+        s_CG = analyzer_CG.get_conventional_standard_structure()
+        symbol_CG= analyzer_CG.get_space_group_symbol()
+
+        print("symmetry: ", symprec, "angle_tolerance: ", angle_tolerance)
+        print("CG spacegroup: ", symbol_CG) 
+        if symbol_CG== 'P1' or symbol_CG== 'P-1':
+            continue
+        else:
+            break
+
+    return s_CG, symbol_CG, num_species
 
 
 
@@ -136,7 +165,7 @@ def run_SDE_from_structures(model,
 
 
 
-def run_SDE_fromLattice(model, 
+def run_SDE_simpleCubic(model, 
                         comp_str, # the string of composition
                         atom_volume, # avg atom volume
                         gen_kwargs,
@@ -245,7 +274,6 @@ def run_SDE_fromBravis(model,
     all_atom_types = []
     
     DEVICE = model.device
-    VOL_ATOM = atom_volume
 
     lengths = []
     angles = []
@@ -257,7 +285,7 @@ def run_SDE_fromBravis(model,
     num_atoms = [num_atoms_formula] * 7 # for 7 different lattice types
 
     for lattice_type in ['cubic', 'tetragonal', 'orthorhombic', 'monoclinic', 'aP', 'hP', 'hR']:
-        lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * VOL_ATOM)
+        lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * atom_volume)
         lengths.append(lattice_params[:3])
         angles.append(lattice_params[3:])
 
@@ -273,16 +301,13 @@ def run_SDE_fromBravis(model,
 
         
     num_atoms = torch.tensor(num_atoms, device = DEVICE)
-    print("num_atoms", num_atoms)
-
     cur_atom_types = torch.tensor(all_atom_types, device = DEVICE)
-    print("cur_atom_types", cur_atom_types)
+
+    # print("num_atoms", num_atoms)
+    # print("cur_atom_types", cur_atom_types)
 
     lengths = torch.tensor(lengths, device = DEVICE, dtype = torch.float32).view(-1, 3)
-    # lengths = lengths.expand(-1, 3)
-
     angles = torch.tensor(angles, device = DEVICE, dtype = torch.float32).view(-1, 3)
-    # angles = angles.expand(-1, 3)
     
     print(lengths)
     print(angles)
@@ -300,8 +325,6 @@ def run_SDE_fromBravis(model,
     )
     
     ### convert to pymatgen structure ###
-    
-
     lengths = results['lengths']
     angles = results['angles']
     num_atoms = results['num_atoms']
@@ -317,6 +340,140 @@ def run_SDE_fromBravis(model,
     )
 
     return s_list, results
+
+
+
+def get_inpaint_data_fromHost(model,
+                              host_structure, 
+                              num_insert_ion,
+                              ion = 'Li'):
+    
+    DEVICE = model.device
+
+    insert_ion = Element(ion)
+
+    cur_atom_types = []
+    atom_masks = []
+    for site in host_structure.sites:
+        cur_atom_types.append(site.specie.Z)
+        atom_masks.append(0)
+
+    # Add atom types and atom masks for inserted ions.
+    cur_atom_types += [insert_ion.Z] * num_insert_ion
+    cur_atom_types = torch.tensor(cur_atom_types, device = DEVICE, dtype = torch.int32)
+    atom_masks += [1] * num_insert_ion
+    atom_masks = torch.tensor(atom_masks, device = DEVICE).bool()
+
+    # Add random coordinates for host and inserted ions.
+    insert_frac_coords = torch.rand(num_insert_ion, 3, requires_grad = False, device = DEVICE, dtype = torch.float32)
+    cur_frac_coords = torch.tensor(host_structure.frac_coords, device = DEVICE)
+    cur_frac_coords = torch.concat((cur_frac_coords, insert_frac_coords), axis = 0)
+    cur_frac_coords = torch.tensor(cur_frac_coords, dtype = torch.float32)
+
+    # Cell information.
+    num_atoms = torch.tensor([len(cur_atom_types)], device = DEVICE, dtype=torch.int32)
+    angles = torch.tensor([host_structure.lattice.angles], device = DEVICE)
+    lengths = torch.tensor([host_structure.lattice.lengths], device = DEVICE)
+
+    return cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths
+
+def get_batch_inpaint_data_fromHost(model,
+                              host_structure, 
+                              num_insert_ion,
+                              num_batch = 1,
+                              ion = 'Li'):
+    """
+    Get batch inpaint data from host structure (repeat num_batch times).
+    """
+    
+    cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths = \
+        zip(*[get_inpaint_data_fromHost(model, host_structure, num_insert_ion, ion=ion) for _ in range(0, num_batch)])
+
+    # Construct batch data
+    cur_atom_types = torch.cat(cur_atom_types, axis=0)
+    atom_masks = torch.cat(atom_masks, axis=0)
+    cur_frac_coords = torch.cat(cur_frac_coords, axis=0)
+    num_atoms = torch.cat(num_atoms, axis=0)
+    angles = torch.cat(angles, axis=0)
+    lengths = torch.cat(lengths, axis=0)
+
+    return cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths
+
+
+
+def run_inpaint_SDE(model, 
+                    host_structure,
+                    num_insert_ion,
+                    ld_kwargs,
+                    num_batch = 1,
+                    species = 'Li',
+                    ):
+    
+    DEVICE = model.device
+    # Construct framework structure.
+    insert_ion = Element(species)
+    ori_frac_coords = torch.tensor(host_structure.frac_coords)
+
+    cur_atom_types = []
+    atom_masks = []
+    for site in host_structure.sites:
+        cur_atom_types.append(site.specie.Z)
+        atom_masks.append(0)
+
+    cur_atom_types += [insert_ion.Z] * num_insert_ion
+    cur_atom_types = torch.tensor(cur_atom_types)
+
+    atom_masks += [1] * num_insert_ion
+    atom_masks = torch.tensor(atom_masks)
+
+    insert_frac_coords = torch.rand(num_insert_ion, 3, requires_grad = False)
+
+    ori_frac_coords = torch.cat((ori_frac_coords, insert_frac_coords), axis = 0)
+    ori_frac_coords = torch.tensor(ori_frac_coords)
+
+    num_atoms = torch.tensor([len(cur_atom_types)])
+
+    angles = torch.tensor([host_structure.lattice.angles])
+    lengths = torch.tensor([host_structure.lattice.lengths])*1.0
+
+    # Quantization
+    lengths = lengths.float().to(DEVICE)
+    angles = angles.float().to(DEVICE)
+    num_atoms = num_atoms.int().to(DEVICE)
+    frac_coords = ori_frac_coords.float().to(DEVICE)
+    atom_masks = atom_masks.bool().to(DEVICE)
+    cur_atom_types = cur_atom_types.int().to(DEVICE)
+    ori_frac_coords = ori_frac_coords.float().to(DEVICE)
+
+
+    results = model.conditional_langevin_dynamics(
+                                                lengths=lengths,
+                                                angles=angles,
+                                                composition=cur_atom_types,
+                                                num_atoms=num_atoms,
+                                                ori_frac_coords = ori_frac_coords,
+                                                mask = atom_masks,
+                                                ld_kwargs = ld_kwargs,
+                                            )
+
+    # repeats = len(results['all_frac_coords'])//results['num_atoms'][0]
+    repeats = 1
+    lengths = results['lengths'].repeat(repeats,1)
+    angles = results['angles'].repeat(repeats,1)
+    num_atoms = results['num_atoms'].repeat(repeats)
+    frac_coords = results['frac_coords']
+    atom_types = results['atom_types']
+
+    s_list = get_pymatgen_structure(
+        lengths = lengths,
+        angles = angles,
+        num_atoms = num_atoms,
+        frac_coords = frac_coords,
+        atom_types = atom_types,
+    )
+
+    return s_list, results
+
 
 
 
@@ -348,13 +505,64 @@ class CSP_Generator():
         else:
             self.chgnet = CHGNet.from_file(chgnet_path)
 
+    def generate_simple_cubic_structure(self,
+                                        comp_str, # the string of composition,
+                                        atom_volume, # avg atom volume,
+                                        gen_kwargs, # generation keyword arguments,
+                                        ld_kwargs, # SDE simulation keyword arguments,
+                                        ):
+        
+        s_list, results = run_SDE_simpleCubic(model= self.chggen,
+                                              comp_str= comp_str,
+                                              atom_volume = atom_volume,
+                                              gen_kwargs = gen_kwargs,
+                                              ld_kwargs= ld_kwargs)
+        
+        return s_list
 
-    def generate_structure(self):
-        s_init_list, results = run_SDE_fromBravis(model= chggen, 
+
+    def generate_structures_from_Bravis(self, 
+                                        comp_str, # the string of composition,
+                                        atom_volume, # avg atom volume,
+                                        gen_kwargs, # generation keyword arguments,
+                                        ld_kwargs, # SDE simulation keyword arguments,
+                                        ):
+        """
+        Returen: list of pymatgen structures of seven different Bravis lattices
+        """
+        s_Bravis_list, results = run_SDE_fromBravis(model= self.chggen, 
                                                 comp_str= comp_str,
                                                 atom_volume = atom_volume,
                                                 gen_kwargs = gen_kwargs,
                                                 ld_kwargs= ld_kwargs)
+        
+        return s_Bravis_list
+    
+
+    def generate_from_host_structure(self,
+                                    host_structure,
+                                    num_insert_ion,
+                                    ld_kwargs,
+                                    species='Li'):
+        """
+        Generate a list of structures by inserting ions into a host structure.
+
+        Args:
+            host_structure (Structure): The host structure into which ions will be inserted.
+            num_insert_ion (int): The number of ions to be inserted.
+            ld_kwargs (dict): Additional keyword arguments for the ion insertion algorithm.
+            species (str): The species of the ions to be inserted. Default is 'Li'.
+
+        Returns:
+            list: A list of structures with ions inserted.
+
+        """
+        s_list, results = run_inpaint_SDE(model=self.chggen,
+                                        host_structure=host_structure,
+                                        num_insert_ion=num_insert_ion,
+                                        ld_kwargs=ld_kwargs,
+                                        species=species)
+        return s_list
                            
 
 
@@ -365,28 +573,7 @@ def generate_crystal(fv_dict, # dictionary of formula and volume
 
     comp_str = fv_dict['formula']
     atom_volume = fv_dict['volume']
-    
-    device = torch.device(CUDA_DEVICE)
-    chggen = CHGGen.load_from_checkpoint(checkpoint_path = CHGGEN_PATH, 
-                                         map_location= device, strict= False)
-    
-    model = CHGNet.load()
-    chg_relaxer = StructOptimizer(
-        model=model,
-        stress_weight = gen_kwargs.stress_weight,
-        use_device= device)
 
-    ### start score dynamics ###
-    s_init_list, results = run_SDE_fromBravis(model= chggen, 
-                                           comp_str= comp_str,
-                                           atom_volume = atom_volume,
-                                           gen_kwargs = gen_kwargs,
-                                           ld_kwargs= ld_kwargs)
-    
-    
-    se_list = []
-    init_type_list = ['cubic', 'tetragonal', 'orthorhombic', 'monoclinic', 'aP', 'hP', 'hR']
-    
 
     for s_init, type_init in zip(s_init_list, init_type_list): # loop over different cubic lattice generated structures
         # init the structure energy list

@@ -20,7 +20,7 @@ from pymatgen.io.cif import CifWriter
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 import pandas as pd
 
-from e_hull_calculator import EHullCalculator
+from chggen.common.e_hull_calculator import EHullCalculator
 
 import time
 from datetime import datetime
