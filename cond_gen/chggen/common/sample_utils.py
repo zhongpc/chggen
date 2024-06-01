@@ -3,7 +3,6 @@ from __future__ import annotations
 import torch
 import numpy as np
 import os
-import multiprocessing as mp
 
 from chggen.pl_modules.model import CHGGen
 from chggen.common.data_utils import get_scaler, mkdir, get_pymatgen_structure
@@ -346,7 +345,12 @@ def run_SDE_fromBravis(model,
 def get_inpaint_data_fromHost(model,
                               host_structure, 
                               num_insert_ion,
-                              ion = 'Li'):
+                              ion = None):
+    
+
+    if ion is None:
+        raise ValueError("Please specify the ion (as a string) to be inserted.")
+    
     
     DEVICE = model.device
 
@@ -378,16 +382,18 @@ def get_inpaint_data_fromHost(model,
     return cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths
 
 def get_batch_inpaint_data_fromHost(model,
-                              host_structure, 
-                              num_insert_ion,
-                              num_batch = 1,
-                              ion = 'Li'):
+                              host_structure_list, 
+                              num_intercalant_list,
+                              ion = None):
     """
-    Get batch inpaint data from host structure (repeat num_batch times).
+    Get batch inpaint data from a list of host structures
     """
+
+    if ion is None:
+        raise ValueError("Please specify the ion (as a string) to be inserted.")
     
     cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths = \
-        zip(*[get_inpaint_data_fromHost(model, host_structure, num_insert_ion, ion=ion) for _ in range(0, num_batch)])
+        zip(*[get_inpaint_data_fromHost(model, host_structure, num_intercalant, ion=ion) for host_structure, num_intercalant in zip(host_structure_list, num_intercalant_list)])
 
     # Construct batch data
     cur_atom_types = torch.cat(cur_atom_types, axis=0)
@@ -402,56 +408,62 @@ def get_batch_inpaint_data_fromHost(model,
 
 
 def run_inpaint_SDE(model, 
-                    host_structure,
-                    num_insert_ion,
+                    host_structure_list,
+                    num_intercalant_list,
                     ld_kwargs,
-                    num_batch = 1,
                     species = 'Li',
                     ):
+
+    gen_inputs_batch = get_batch_inpaint_data_fromHost(model = model, #  
+                                       host_structure_list= host_structure_list,
+                                       num_intercalant_list = num_intercalant_list,
+                                       ion = species,
+                                    )
     
-    DEVICE = model.device
-    # Construct framework structure.
-    insert_ion = Element(species)
-    ori_frac_coords = torch.tensor(host_structure.frac_coords)
 
-    cur_atom_types = []
-    atom_masks = []
-    for site in host_structure.sites:
-        cur_atom_types.append(site.specie.Z)
-        atom_masks.append(0)
+    # insert_ion = Element(species)
+    # ori_frac_coords = torch.tensor(host_structure.frac_coords)
 
-    cur_atom_types += [insert_ion.Z] * num_insert_ion
-    cur_atom_types = torch.tensor(cur_atom_types)
+    # cur_atom_types = []
+    # atom_masks = []
+    # for site in host_structure.sites:
+    #     cur_atom_types.append(site.specie.Z)
+    #     atom_masks.append(0)
 
-    atom_masks += [1] * num_insert_ion
-    atom_masks = torch.tensor(atom_masks)
+    # cur_atom_types += [insert_ion.Z] * num_insert_ion
+    # cur_atom_types = torch.tensor(cur_atom_types)
 
-    insert_frac_coords = torch.rand(num_insert_ion, 3, requires_grad = False)
+    # atom_masks += [1] * num_insert_ion
+    # atom_masks = torch.tensor(atom_masks)
 
-    ori_frac_coords = torch.cat((ori_frac_coords, insert_frac_coords), axis = 0)
-    ori_frac_coords = torch.tensor(ori_frac_coords)
+    # insert_frac_coords = torch.rand(num_insert_ion, 3, requires_grad = False)
 
-    num_atoms = torch.tensor([len(cur_atom_types)])
+    # ori_frac_coords = torch.cat((ori_frac_coords, insert_frac_coords), axis = 0)
+    # ori_frac_coords = torch.tensor(ori_frac_coords)
 
-    angles = torch.tensor([host_structure.lattice.angles])
-    lengths = torch.tensor([host_structure.lattice.lengths])*1.0
+    # num_atoms = torch.tensor([len(cur_atom_types)])
 
-    # Quantization
-    lengths = lengths.float().to(DEVICE)
-    angles = angles.float().to(DEVICE)
-    num_atoms = num_atoms.int().to(DEVICE)
-    frac_coords = ori_frac_coords.float().to(DEVICE)
-    atom_masks = atom_masks.bool().to(DEVICE)
-    cur_atom_types = cur_atom_types.int().to(DEVICE)
-    ori_frac_coords = ori_frac_coords.float().to(DEVICE)
+    # angles = torch.tensor([host_structure.lattice.angles])
+    # lengths = torch.tensor([host_structure.lattice.lengths])*1.0
+
+    # # Quantization
+    # lengths = lengths.float().to(DEVICE)
+    # angles = angles.float().to(DEVICE)
+    # num_atoms = num_atoms.int().to(DEVICE)
+    # frac_coords = ori_frac_coords.float().to(DEVICE)
+    # atom_masks = atom_masks.bool().to(DEVICE)
+    # cur_atom_types = cur_atom_types.int().to(DEVICE)
+    # ori_frac_coords = ori_frac_coords.float().to(DEVICE)
+
+    cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths = gen_inputs_batch
 
 
-    results = model.conditional_langevin_dynamics(
+    results = model.conditional_reverse_SDE(
                                                 lengths=lengths,
                                                 angles=angles,
                                                 composition=cur_atom_types,
                                                 num_atoms=num_atoms,
-                                                ori_frac_coords = ori_frac_coords,
+                                                ori_frac_coords = cur_frac_coords,
                                                 mask = atom_masks,
                                                 ld_kwargs = ld_kwargs,
                                             )
@@ -540,8 +552,8 @@ class CSP_Generator():
     
 
     def generate_from_host_structure(self,
-                                    host_structure,
-                                    num_insert_ion,
+                                    host_structure_list,
+                                    num_intercalant_list,
                                     ld_kwargs,
                                     species='Li'):
         """
@@ -558,8 +570,8 @@ class CSP_Generator():
 
         """
         s_list, results = run_inpaint_SDE(model=self.chggen,
-                                        host_structure=host_structure,
-                                        num_insert_ion=num_insert_ion,
+                                        host_structure_list= host_structure_list,
+                                        num_intercalant_list= num_intercalant_list,
                                         ld_kwargs=ld_kwargs,
                                         species=species)
         return s_list
