@@ -24,7 +24,7 @@ model_hparams_cond ={'latent_dim': 64,           # Model dimension.
                 'num_noise_level': 200,
                 'cost_coord': 1.0,          # Loss weight.
                 'cost_property': 0,
-                'decoder': 'nequip_cond',     # Decoder type.
+                'decoder': 'nequip_EF',     # Decoder type.
                 'max_neighbors': 60,
                 'cutoff': 7.,
                 'irreps_hidden': '32x0e + 32x1e',
@@ -45,7 +45,7 @@ chggen_cond = CHGGen(hparams_dict=model_hparams_cond)
 
 ### test the single structure version ###
 
-(cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties) = get_tensor_from_structure(structure)
+(cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties, cur_cart_coords) = get_tensor_from_structure(structure)
 # property_tensor = 
 
 pred_cart_coords = chggen_cond.predict_structures(cur_atom_types = cur_atom_types, 

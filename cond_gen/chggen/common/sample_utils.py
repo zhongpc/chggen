@@ -1,6 +1,4 @@
 from __future__ import annotations
-from types import SimpleNamespace
-import argparse
 
 import torch
 import numpy as np
@@ -27,9 +25,9 @@ from datetime import datetime
 
 import matplotlib.pyplot as plt
 
-
-
 import numpy as np
+
+
 
 def generate_lattice_cell(lattice_type, volume):
     if lattice_type == 'cubic':
@@ -75,21 +73,20 @@ def generate_lattice_cell(lattice_type, volume):
 
 
 
-def convert_string_to_list(string):
-    try:
-        # Safely evaluate the string as a Python literal (list)
-        return ast.literal_eval(string)
-    except (ValueError, SyntaxError):
-        # Handle the case where the string is not a valid list
-        return []
-    
-
-
-
-
 def run_SDE_from_structures(model, 
-                                 s_init_list,
-                                 ld_kwargs):
+                            s_init_list,
+                            ld_kwargs):
+    """
+    Run the reverse SDE (Stochastic Differential Equation) based on a given list of initial structures.
+
+    Args:
+        model (object): The CHGGen model used for the simulation.
+        s_init_list (list): A list of initial structures.
+        ld_kwargs (dict): Additional keyword arguments for the SDE simulation.
+
+    Returns:
+        tuple: A tuple containing the list of transformed structures and the simulation results.
+    """
     
     all_lengths = []
     all_angles = []
@@ -139,13 +136,25 @@ def run_SDE_from_structures(model,
 
 
 
-def run_langevin_fromLattice(model, 
-                             comp_str, # the string of composition
-                             atom_volume, # avg atom volume
-                             gen_kwargs,
-                             ld_kwargs):
-    
+def run_SDE_fromLattice(model, 
+                        comp_str, # the string of composition
+                        atom_volume, # avg atom volume
+                        gen_kwargs,
+                        ld_kwargs):
+    """
+    Generate SDE from give lattice parameters. 
 
+    Args:
+        model (object): The model used for generating trajectories.
+        comp_str (str): The string representation of the composition.
+        atom_volume (float): The average atom volume.
+        gen_kwargs (object): Additional keyword arguments for generation task
+        ld_kwargs (object): Additional keyword arguments for reverse SDE simulation.
+
+    Returns:
+        tuple: A tuple containing the generated trajectories and additional results.
+    """
+    
     num_atoms = []
     all_atom_types = []
     
@@ -180,11 +189,9 @@ def run_langevin_fromLattice(model,
     angles = torch.ones((len(num_atoms), 3), device = DEVICE) * 90
     lengths =  torch.tensor(lengths, device = DEVICE, dtype = torch.float32).view(-1, 1)
     lengths = lengths.expand(-1, 3)
-    
+
     print(lengths)
-
-
-    rand_frac_coords = torch.rand((num_atoms.sum(), 3), device= DEVICE, requires_grad = False)
+    # rand_frac_coords = torch.rand((num_atoms.sum(), 3), device= DEVICE, requires_grad = False)
     
 
     ###  return the results ###
@@ -197,8 +204,6 @@ def run_langevin_fromLattice(model,
     )
     
     ### convert to pymatgen structure ###
-    
-
     lengths = results['lengths']
     angles = results['angles']
     num_atoms = results['num_atoms']
@@ -218,12 +223,24 @@ def run_langevin_fromLattice(model,
 
 
 def run_SDE_fromBravis(model, 
-                             comp_str, # the string of composition
-                             atom_volume, # avg atom volume
-                             gen_kwargs,
-                             ld_kwargs):
-    
+                       comp_str, # the string of composition
+                       atom_volume, # avg atom volume
+                       gen_kwargs,
+                       ld_kwargs):
+    """
+    Run the SDE with experiencing different Bravis lattices
 
+    Args:
+        model (object): The CHGGen model used for the simulation.
+        comp_str (str): The string representation of the composition.
+        atom_volume (float): The average atom volume.
+        gen_kwargs (object): The generation keyword arguments.
+        ld_kwargs (object): The SDE simulation keyword arguments.
+
+    Returns:
+        tuple: A tuple containing the pymatgen structure list and the results dictionary.
+    """
+    
     num_atoms = []
     all_atom_types = []
     
@@ -270,8 +287,7 @@ def run_SDE_fromBravis(model,
     print(lengths)
     print(angles)
 
-
-    rand_frac_coords = torch.rand((num_atoms.sum(), 3), device= DEVICE, requires_grad = False)
+    # rand_frac_coords = torch.rand((num_atoms.sum(), 3), device= DEVICE, requires_grad = False)
     
 
     ###  return the results ###
@@ -304,7 +320,48 @@ def run_SDE_fromBravis(model,
 
 
 
-def generate_crystal(fv_dict):
+class CSP_Generator():
+
+    def __init__(self, 
+                 chggen_path,
+                 chgnet_path = None,
+                 device='cuda:0',
+                 ):
+        
+        self.chggen = None
+        self.chgnet = None
+        self.relaxer = None
+        self.device = torch.device(device)
+
+        self.load_chggen(chggen_path)
+        self.load_chgnet(chgnet_path)
+        self.relaxer = StructOptimizer(model=self.chgnet,
+                                        use_device= self.device)
+
+
+    def load_chggen(self, chggen_path):
+        self.chggen = CHGGen.load_from_checkpoint(checkpoint_path=chggen_path, map_location=self.device, strict=False)
+
+    def load_chgnet(self, chgnet_path = None):
+        if chgnet_path is None:
+            self.chgnet = CHGNet.load()
+        else:
+            self.chgnet = CHGNet.from_file(chgnet_path)
+
+
+    def generate_structure(self):
+        s_init_list, results = run_SDE_fromBravis(model= chggen, 
+                                                comp_str= comp_str,
+                                                atom_volume = atom_volume,
+                                                gen_kwargs = gen_kwargs,
+                                                ld_kwargs= ld_kwargs)
+                           
+
+
+def generate_crystal(fv_dict, # dictionary of formula and volume
+                     CHGGEN_PATH, # path to the chggen model
+                     CUDA_DEVICE = 'cuda:0',
+                     ):
 
     comp_str = fv_dict['formula']
     atom_volume = fv_dict['volume']
@@ -442,61 +499,3 @@ def generate_crystal(fv_dict):
             df.to_csv(ROOT_DIR + '/mutation_gen_summary.csv', index=False, header=True)
 
     print("Done")
-
-
-    
-    
-PPD_PATH = "/home/zhongpc/chggen/host_gen/file_trans/2023-02-07-ppd-mp.pkl.gz"
-CUDA_DEVICE = "cuda:6"
-CHGGEN_PATH = "./files/cut_7_conv_3_epoch=27-val_loss=0.87.ckpt"
-
-# e_hull_calculator = EHullCalculator(PPD_PATH)
-    
-    
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input", type=str, default= "file.csv", help="a csv file containing formula and atom_volume")
-    parser.add_argument("-o", "--output", type=str, default= "genStable_structures", help="the name of output directory")
-    parser.add_argument("-n", "--numcell", type=int, default= 1, help="number of cell for the formula")    
-    parser.add_argument("-d", "--device", type=str, default= "cuda", help="gpu device")
-    args = parser.parse_args()
-
-    # CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
-    ld_kwargs = SimpleNamespace(
-        n_step_each = 5,            # Corrector
-        min_sigma = 0.01,
-        num_noise_level = 200,
-        signal_to_noise_ratio = 0.4,
-        save_traj = False,
-        disable_bar = False,
-        step_lr = 1e-4,
-    )
-
-
-    gen_kwargs = SimpleNamespace(
-        num_gen = 1, # number of structures generated from the cubic lattice
-        num_mutation = 2, # number of mutations during the relax-generation iteration
-        num_cell = args.numcell, # 2
-        stress_weight = 1 / 160.21766208, # 0.2,
-        ehull_cutoff = 0.06,
-        )
-
-    
-    df_read = pd.read_csv(args.input)
-    
-    valid_fv_list = []
-
-    formula_list = df_read.formula.values.tolist()
-    volume_list = df_read.avg_volume.values.tolist()
-    
-    for formula,volume in zip(formula_list, volume_list): 
-        valid_fv_list.append({'formula': formula, 'volume': volume})
-
-        
-    # for debug
-    # generate_crystal(valid_fv_list[1])
-    print(torch.cuda.is_available())
-
-    for ii in range(len(valid_fv_list)):
-        generate_crystal(valid_fv_list[ii])
-
