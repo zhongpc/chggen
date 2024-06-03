@@ -13,6 +13,8 @@ from chgnet.model.dynamics import StructOptimizer
 from pymatgen.core import Structure, Composition, Element, Lattice
 from pymatgen.io.ase import AseAtomsAdaptor
 from pymatgen.io.cif import CifWriter
+from pymatgen.analysis.ewald import EwaldSummation
+
 
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 import pandas as pd
@@ -23,23 +25,49 @@ from datetime import datetime
 import numpy as np
 
 
+def filter_nan_structure(s_list):
+    new_s_list = []
+    for structure in s_list:
+        if 'nan' in str(structure):
+            pass
+        else:
+            new_s_list.append(structure)
+    return new_s_list
 
-def generate_lattice_cell(lattice_type, volume):
+
+
+def compute_ewald_energy_single_structure(
+        structure: Structure,
+    ) -> float:
+        """Compute the Ewald energy of a structure with guessed oxidation state."""
+        structure.add_oxidation_state_by_guess()
+        ewald_sum = EwaldSummation(structure)
+        ewald_energy = ewald_sum.total_energy
+        structure.remove_oxidation_states()
+        return ewald_energy
+
+
+def generate_lattice_cell(lattice_type, volume, ratio = None):
+    if ratio is None:
+        random_ratio = np.random.uniform(1, 1.5)
+    else:
+        random_ratio = ratio
+
     if lattice_type == 'cubic':
         a = np.cbrt(volume)
         lattice_params = (a, a, a, 90, 90, 90)
     elif lattice_type == 'tetragonal':
-        a = np.sqrt(volume / 1.5)
-        c = 1.5 * a
+        a = np.cbrt(volume / random_ratio)
+        c = random_ratio * a
         lattice_params = (a, a, c, 90, 90, 90)
     elif lattice_type == 'orthorhombic':
-        a = np.cbrt(volume / 1.5)
-        b = 1.5 * a
+        a = np.cbrt(volume / random_ratio)
+        b = random_ratio * a
         c = a
         lattice_params = (a, b, c, 90, 90, 90)
     elif lattice_type == 'monoclinic':
-        a = np.cbrt(volume / 1.5 / 0.984)
-        b = 1.5 * a
+        a = np.cbrt(volume / random_ratio / 0.984)
+        b = random_ratio * a
         c = a
         beta = 100
         lattice_params = (a, b, c, 90, beta, 90)
@@ -53,8 +81,8 @@ def generate_lattice_cell(lattice_type, volume):
         gamma = 100
         lattice_params = (a, b, c, alpha, beta, gamma)
     elif lattice_type == 'hP':
-        a = np.sqrt(volume / (np.sqrt(3) / 2) / 1.5)
-        c = a * 1.5
+        a = np.sqrt(volume / (np.sqrt(3) / 2) / random_ratio)
+        c = a * random_ratio
         lattice_params = (a, a, c, 90, 90, 120)
     elif lattice_type == 'hR':
         a = np.cbrt(volume / 0.707)
@@ -83,6 +111,7 @@ def get_coarse_grain_framework(structure: Structure,
     for symprec, angle_tolerance in zip(sym_list, angle_list):
         s_frame = structure.copy()
         num_species = s_frame.composition[species_to_remove]
+        
 
         s_frame.remove_species([species_to_remove])
 
@@ -91,16 +120,19 @@ def get_coarse_grain_framework(structure: Structure,
                                          angle_tolerance= angle_tolerance)
         
         s_CG = analyzer_CG.get_conventional_standard_structure()
+
         symbol_CG= analyzer_CG.get_space_group_symbol()
 
-        print("symmetry: ", symprec, "angle_tolerance: ", angle_tolerance)
-        print("CG spacegroup: ", symbol_CG) 
+        # print("symmetry: ", symprec, "angle_tolerance: ", angle_tolerance)
+        # print("CG spacegroup: ", symbol_CG) 
         if symbol_CG== 'P1' or symbol_CG== 'P-1':
             continue
         else:
             break
 
-    return s_CG, symbol_CG, num_species
+    print("CG spacegroup: ", symbol_CG) 
+
+    return s_CG, symbol_CG, int(num_species)
 
 
 
@@ -257,7 +289,8 @@ def run_SDE_fromBravis(model,
                        comp_str, # the string of composition
                        atom_volume, # avg atom volume
                        gen_kwargs,
-                       ld_kwargs):
+                       ld_kwargs, 
+                       ratio = None):
     """
     Run the SDE with experiencing different Bravis lattices
 
@@ -267,6 +300,7 @@ def run_SDE_fromBravis(model,
         atom_volume (float): The average atom volume.
         gen_kwargs (object): The generation keyword arguments.
         ld_kwargs (object): The SDE simulation keyword arguments.
+        ratio (float): The ratio of the lattice parameters (e.g c/a) None for random value between 1 and 1.5
 
     Returns:
         tuple: A tuple containing the pymatgen structure list and the results dictionary.
@@ -284,28 +318,56 @@ def run_SDE_fromBravis(model,
 
     comp = Composition(comp_str)
     num_atoms_formula = int(comp.num_atoms)
-    num_atoms = [num_atoms_formula] * 7 # for 7 different lattice types
+
+    if isinstance(ratio, float):
+        num_atoms = [num_atoms_formula] * 7 # for 7 different lattice types
+
+    elif isinstance(ratio, list):
+        num_atoms = [num_atoms_formula] * 7 * len(ratio) # for 7 different lattice types
+        print("num_atoms", num_atoms)
+
+    
+
 
     for lattice_type in ['cubic', 'tetragonal', 'orthorhombic', 'monoclinic', 'aP', 'hP', 'hR']:
-        lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * atom_volume)
-        lengths.append(lattice_params[:3])
-        angles.append(lattice_params[3:])
+        if isinstance(ratio, float):
+            lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * atom_volume, ratio = ratio)
+            lengths.append(lattice_params[:3])
+            angles.append(lattice_params[3:])
 
-        atom_types = []
-        comp_dict = comp.as_dict()
-        for key in comp_dict:
-            amount = comp_dict[key]
-            element = Element(key)
-            atom_types += [element.Z] * int(amount)
-        atom_types = atom_types * gen_kwargs.num_cell
-        all_atom_types += atom_types
+            atom_types = []
+            comp_dict = comp.as_dict()
+            for key in comp_dict:
+                amount = comp_dict[key]
+                element = Element(key)
+                atom_types += [element.Z] * int(amount)
+            atom_types = atom_types * gen_kwargs.num_cell
+            all_atom_types += atom_types
+        
+        elif isinstance(ratio, list):
+            for r in ratio:
+                lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * atom_volume, ratio = r)
+                lengths.append(lattice_params[:3])
+                angles.append(lattice_params[3:])
+
+                atom_types = []
+                comp_dict = comp.as_dict()
+                for key in comp_dict:
+                    amount = comp_dict[key]
+                    element = Element(key)
+                    atom_types += [element.Z] * int(amount)
+                atom_types = atom_types * gen_kwargs.num_cell
+                all_atom_types += atom_types
+
         
 
         
     num_atoms = torch.tensor(num_atoms, device = DEVICE)
     cur_atom_types = torch.tensor(all_atom_types, device = DEVICE)
 
-    # print("num_atoms", num_atoms)
+    print("num_atoms", num_atoms)
+    print(lengths)
+    print(angles)
     # print("cur_atom_types", cur_atom_types)
 
     lengths = torch.tensor(lengths, device = DEVICE, dtype = torch.float32).view(-1, 3)
@@ -348,16 +410,16 @@ def run_SDE_fromBravis(model,
 def get_inpaint_data_fromHost(model,
                               host_structure, 
                               num_insert_ion,
-                              ion = None):
+                              species = None):
     
 
-    if ion is None:
+    if species is None:
         raise ValueError("Please specify the ion (as a string) to be inserted.")
     
     
     DEVICE = model.device
 
-    insert_ion = Element(ion)
+    insert_ion = Element(species)
 
     cur_atom_types = []
     atom_masks = []
@@ -387,16 +449,16 @@ def get_inpaint_data_fromHost(model,
 def get_batch_inpaint_data_fromHost(model,
                               host_structure_list, 
                               num_intercalant_list,
-                              ion = None):
+                              species = None):
     """
     Get batch inpaint data from a list of host structures
     """
 
-    if ion is None:
+    if species is None:
         raise ValueError("Please specify the ion (as a string) to be inserted.")
     
     cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths = \
-        zip(*[get_inpaint_data_fromHost(model, host_structure, num_intercalant, ion=ion) for host_structure, num_intercalant in zip(host_structure_list, num_intercalant_list)])
+        zip(*[get_inpaint_data_fromHost(model, host_structure, num_intercalant, species= species) for host_structure, num_intercalant in zip(host_structure_list, num_intercalant_list)])
 
     # Construct batch data
     cur_atom_types = torch.cat(cur_atom_types, axis=0)
@@ -420,7 +482,7 @@ def run_inpaint_SDE(model,
     gen_inputs_batch = get_batch_inpaint_data_fromHost(model = model, #  
                                        host_structure_list= host_structure_list,
                                        num_intercalant_list = num_intercalant_list,
-                                       ion = species,
+                                       species = species,
                                     )
     
 
@@ -541,6 +603,7 @@ class CSP_Generator():
                                         atom_volume, # avg atom volume,
                                         gen_kwargs, # generation keyword arguments,
                                         ld_kwargs, # SDE simulation keyword arguments,
+                                        ratio_list = [0.75, 0.875, 1.125, 1.25],  # ratio of lattice parameters # list or float
                                         ):
         """
         Returen: list of pymatgen structures of seven different Bravis lattices
@@ -549,7 +612,8 @@ class CSP_Generator():
                                                 comp_str= comp_str,
                                                 atom_volume = atom_volume,
                                                 gen_kwargs = gen_kwargs,
-                                                ld_kwargs= ld_kwargs)
+                                                ld_kwargs= ld_kwargs,
+                                                ratio =  ratio_list)
         
         return s_Bravis_list
     
