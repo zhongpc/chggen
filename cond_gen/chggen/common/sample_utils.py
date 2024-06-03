@@ -67,7 +67,7 @@ def generate_lattice_cell(lattice_type, volume):
 
 
 def get_coarse_grain_framework(structure: Structure,
-                                species = 'Li',
+                                species_to_remove = None,
                                 sym_list = [0.1, 0.2, 0.5, 0.8, 1.0, 1.5, 2.0],
                                 angle_list = [10, 15, 15, 15, 20, 30, 30],
                                 ):
@@ -75,13 +75,16 @@ def get_coarse_grain_framework(structure: Structure,
     Coarse grain the framework of structure by removing the species in the species list.
     """
 
+    if species_to_remove is None:
+        raise ValueError("Please specify the species to be removed.")
+
     structure.remove_oxidation_states()
 
     for symprec, angle_tolerance in zip(sym_list, angle_list):
         s_frame = structure.copy()
-        num_species = s_frame.composition[species]
+        num_species = s_frame.composition[species_to_remove]
 
-        s_frame.remove_species([species])
+        s_frame.remove_species([species_to_remove])
 
         analyzer_CG = SpacegroupAnalyzer(structure= s_frame, 
                                          symprec= symprec, 
