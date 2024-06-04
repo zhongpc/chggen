@@ -226,16 +226,19 @@ if __name__ == "__main__":
                         device='cuda:6')
 
     csp.load_e_hull_calculator(ppd_path= "/home/zhongpc/chggen/host_gen/file_trans/2023-02-07-ppd-mp.pkl.gz")
-
-    print("--"*5 + "Start generating structures with inpainting" + "--"*5)
-    df_asGen = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
-                    species = 'Zn', # set the same to enable inpainting, set different to use as-generated structures
-                    gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
     
-    print("--"*5 + "Start generating structures without inpainting" + "--"*5)    
-    df_inpaint = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
-                    species = 'Xe', # set the same to enable inpainting, set different to use as-generated structures
-                    gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
+
+    for num_inpaint in range(3):
+        print("--"*5 + "Start generating structures with inpainting" + "--"*5)
+        df_asGen = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
+                        species = 'Zn', # set the same to enable inpainting, set different to use as-generated structures
+                        gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
+    
+    for num_asGen in range(2):
+        print("--"*5 + "Start generating structures without inpainting" + "--"*5)    
+        df_inpaint = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
+                        species = 'Xe', # set the same to enable inpainting, set different to use as-generated structures
+                        gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
     
     # Example: python genFlow.py -d cuda:6 -c ZnSP2S5 -v 24
 
