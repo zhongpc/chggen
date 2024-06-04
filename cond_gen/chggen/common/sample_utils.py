@@ -6,6 +6,7 @@ import os
 
 from chggen.pl_modules.model import CHGGen
 from chggen.common.data_utils import get_scaler, mkdir, get_pymatgen_structure
+from chggen.common.e_hull_calculator import EHullCalculator
 
 from chgnet.model.model import CHGNet
 from chgnet.model.dynamics import StructOptimizer
@@ -365,16 +366,16 @@ def run_SDE_fromBravis(model,
     num_atoms = torch.tensor(num_atoms, device = DEVICE)
     cur_atom_types = torch.tensor(all_atom_types, device = DEVICE)
 
-    print("num_atoms", num_atoms)
-    print(lengths)
-    print(angles)
+    # print("num_atoms", num_atoms)
+    # print(lengths)
+    # print(angles)
     # print("cur_atom_types", cur_atom_types)
 
     lengths = torch.tensor(lengths, device = DEVICE, dtype = torch.float32).view(-1, 3)
     angles = torch.tensor(angles, device = DEVICE, dtype = torch.float32).view(-1, 3)
     
-    print(lengths)
-    print(angles)
+    # print(lengths)
+    # print(angles)
 
     # rand_frac_coords = torch.rand((num_atoms.sum(), 3), device= DEVICE, requires_grad = False)
     
@@ -565,6 +566,7 @@ class CSP_Generator():
         self.chggen = None
         self.chgnet = None
         self.relaxer = None
+        self.e_hull_calculator = None
         self.device = torch.device(device)
 
         self.load_chggen(chggen_path)
@@ -575,6 +577,9 @@ class CSP_Generator():
 
     def load_chggen(self, chggen_path):
         self.chggen = CHGGen.load_from_checkpoint(checkpoint_path=chggen_path, map_location=self.device, strict=False)
+
+    def load_e_hull_calculator(self, ppd_path):
+        self.e_hull_calculator = EHullCalculator(ppd_path)
 
     def load_chgnet(self, chgnet_path = None):
         if chgnet_path is None:
