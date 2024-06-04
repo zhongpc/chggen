@@ -201,6 +201,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--chemical_formula", type=str, default= "ZnSP2S5", help="chemical formula")
     parser.add_argument("-v", "--atomic_volume", type=float, default= 24, help="atomic volume")
+    parser.add_argument("-s", "--species", type=str, default= "Zn", help="species")
     parser.add_argument("-d", "--device", type=str, default= "cuda", help="gpu device")
     args = parser.parse_args()
     
@@ -229,16 +230,16 @@ if __name__ == "__main__":
     
 
     for num_inpaint in range(3):
-        print("--"*5 + "Start generating structures with inpainting" + "--"*5)
+        print("**"*5 + "Start generating structures with inpainting" + "**"*5)
         df_asGen = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
-                        species = 'Zn', # set the same to enable inpainting, set different to use as-generated structures
+                        species = args.species, # set the same to enable inpainting, set different to use as-generated structures
                         gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
     
     for num_asGen in range(2):
-        print("--"*5 + "Start generating structures without inpainting" + "--"*5)    
+        print("**"*5 + "Start generating structures without inpainting" + "**"*5)    
         df_inpaint = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
                         species = 'Xe', # set the same to enable inpainting, set different to use as-generated structures
                         gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
     
-    # Example: python genFlow.py -d cuda:6 -c ZnSP2S5 -v 24
+    # Example: python genFlow.py -d cuda:6 -c ZnSP2S5 -s Zn -v 24
 
