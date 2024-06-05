@@ -77,7 +77,7 @@ def refine_structure(s_list, symprec= 0.2, angle_tolerance= 15):
 
 
 # %%
-def get_save_dict_list(csp, s_list):
+def get_save_dict_list(csp, s_list, type):
     save_dict_list = []
     for ii, s in enumerate(s_list):
         atoms = AseAtomsAdaptor().get_atoms(s)
@@ -113,6 +113,7 @@ def get_save_dict_list(csp, s_list):
                     'Fmax_chgnet': F_max, 
                     'E0_chgnet_atom': E0_atom,
                     'E_chgnet_atom': toten / s_relax.num_sites,
+                    'type': type,
                     'energy': toten,
                     'structure': s_relax,
                     # 'lattice_type': type_init,
@@ -139,27 +140,30 @@ def main(csp,
     print("--"*5 + "Relax the generated structures from Bravis lattices" + "--"*5)
     s_list_relax = relax_structures(csp, s_list_Bravis)
 
+    s_list_relax_conventional_unit = refine_structure(s_list_relax, symprec= 0.2, angle_tolerance= 20)
+    save_dict_list = get_save_dict_list(csp, s_list_relax_conventional_unit, type = 'asGen')
+
     #####  Coarse grain the relaxed structures and get the host structures#####
-    print("--"*5 + "Coarse grain the relaxed structures" + "--"*5)
-    host_structure_list, num_intercalat_list = coarse_grain_framework(s_list_relax, species_to_remove= species)
-
-    #####  Run inpaiting based on the host structures  #####
-    print("--"*5 + "Run inpainting based on the host structures" + "--"*5)
-
     if species in chemical_formula:
-        s_list_inpaint = csp.generate_from_host_structure(host_structure_list= host_structure_list,
-                                 num_intercalant_list= num_intercalat_list,
+        print("--"*5 + "Coarse grain the relaxed structures" + "--"*5)
+        host_structure_list, num_intercalat_list = coarse_grain_framework(s_list_relax, species_to_remove= species)
+
+        
+
+        #####  Run inpaiting based on the host structures  #####
+        print("--"*5 + "Run inpainting based on the host structures" + "--"*5)
+        s_list_inpaint = csp.generate_from_host_structure(host_structure_list= host_structure_list * 3,
+                                 num_intercalant_list= num_intercalat_list * 3,
                                  ld_kwargs=ld_kwargs, 
                                  species= species)
-    else:
-        print("The species is not in the chemical formula, will not run inpainting with framework. As-generated structures will be used.")
-        s_list_inpaint = host_structure_list
-    
-    #####  Refine the inpainted structures  #####
-    print("--"*5 + "Run inpaiting based on the host structures" + "--"*5)
-    s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.2, angle_tolerance= 15)
+        #####  Refine the inpainted structures  #####
+        s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.2, angle_tolerance= 20)
+        save_dict_list = get_save_dict_list(csp, s_list_inpaint_conventional_unit, type= 'inpaint')
 
-    save_dict_list = get_save_dict_list(csp, s_list_inpaint_conventional_unit)
+    else:
+        print("The species is not in the chemical formula, will not run inpainting with framework. As-generated structures will be used.")    
+    
+    # save_dict_list = get_save_dict_list(csp, s_list_inpaint_conventional_unit)
     save_dict_list = csp.e_hull_calculator.get_e_hull(save_dict_list)
     
     #####  Post process & compute phase stability & save structural information  #####
@@ -167,7 +171,7 @@ def main(csp,
     df = pd.DataFrame(columns=['material_id', 'formula', 'e_hull',
                               's_inpaint_asGen_cif', 'spacegroup_asGen', 
                               's_relax_refine_cif', 'spacegroup_refine', 's_relax_cif', 
-                              'Fmax_chgnet', 'E0_chgnet_atom', 'E_chgnet_atom', 'energy', 'structure'])
+                              'Fmax_chgnet', 'E0_chgnet_atom', 'E_chgnet_atom', 'type', 'energy', 'structure'])
 
     for save_dict in save_dict_list:
         row_df = pd.DataFrame([save_dict])
@@ -180,17 +184,6 @@ def main(csp,
     df = df.drop('e_hull_diff', axis=1)
     df = df.drop('energy', axis=1)
     df = df.drop('structure', axis=1)
-
-    CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
-    ROOT_DIR = './files/' + chemical_formula 
-
-    if os.path.exists(ROOT_DIR + '/generation_summary'+ '_' + CURRENT_DATE +'.csv'):
-        df.to_csv(ROOT_DIR + '/generation_summary' + '_' + CURRENT_DATE +'.csv', mode='a', index=False, header=False)
-    else:
-        mkdir(ROOT_DIR)
-        df.to_csv(ROOT_DIR + '/generation_summary' + '_' + CURRENT_DATE +'.csv', index=False, header=True)
-
-    print("Done")
 
     return df
 
@@ -216,8 +209,8 @@ if __name__ == "__main__":
             disable_bar = False,
         )
     gen_kwargs = SimpleNamespace(
-            num_gen = 3, # number of structures generated from the cubic lattice
-            num_mutation = 2, # number of mutations during the relax-generation iteration
+            num_gen = 3, # number of structures generated from the cubic lattice (not used)
+            num_mutation = 2, # number of mutations during the relax-generation iteration (not used)
             num_cell = 1, # number of times to the formula
             ehull_cutoff = 0.06,
             )
@@ -231,15 +224,34 @@ if __name__ == "__main__":
 
     for num_inpaint in range(3):
         print("**"*5 + "Start generating structures with inpainting" + "**"*5)
-        df_asGen = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
+        df_inpaint = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
                         species = args.species, # set the same to enable inpainting, set different to use as-generated structures
                         gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
+        
+        CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
+        ROOT_DIR = './files/' + args.chemical_formula 
+
+        if os.path.exists(ROOT_DIR + '/generate_summary'+ '_' + CURRENT_DATE +'.csv'):
+            df_inpaint.to_csv(ROOT_DIR + '/generate_summary' + '_' + CURRENT_DATE +'.csv', mode='a', index=False, header=False)
+        else:
+            mkdir(ROOT_DIR)
+            df_inpaint.to_csv(ROOT_DIR + '/generate_summary' + '_' + CURRENT_DATE +'.csv', index=False, header=True)
     
-    for num_asGen in range(2):
-        print("**"*5 + "Start generating structures without inpainting" + "**"*5)    
-        df_inpaint = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
-                        species = 'Xe', # set the same to enable inpainting, set different to use as-generated structures
-                        gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
+    # for num_asGen in range(2):
+    #     print("**"*5 + "Start generating structures without inpainting" + "**"*5)    
+    #     df_asGen = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
+    #                     species = 'Xe', # set the same to enable inpainting, set different to use as-generated structures
+    #                     gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
+        
+    #     CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
+    #     ROOT_DIR = './files/' + args.chemical_formula 
+
+    #     if os.path.exists(ROOT_DIR + '/CG_asGen_summary'+ '_' + CURRENT_DATE +'.csv'):
+    #         df_asGen.to_csv(ROOT_DIR + '/CG_asGen_summary' + '_' + CURRENT_DATE +'.csv', mode='a', index=False, header=False)
+    #     else:
+    #         mkdir(ROOT_DIR)
+    #         df_asGen.to_csv(ROOT_DIR + '/CG_asGen_summary' + '_' + CURRENT_DATE +'.csv', index=False, header=True)
+
+    print("Done")
     
     # Example: python genFlow.py -d cuda:6 -c ZnSP2S5 -s Zn -v 24
-
