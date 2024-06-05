@@ -140,7 +140,7 @@ def main(csp,
     print("--"*5 + "Relax the generated structures from Bravis lattices" + "--"*5)
     s_list_relax = relax_structures(csp, s_list_Bravis)
 
-    s_list_relax_conventional_unit = refine_structure(s_list_relax, symprec= 0.2, angle_tolerance= 20)
+    s_list_relax_conventional_unit = refine_structure(s_list_relax, symprec= 0.15, angle_tolerance= 15)
     save_dict_list = get_save_dict_list(csp, s_list_relax_conventional_unit, type = 'asGen')
 
     #####  Coarse grain the relaxed structures and get the host structures#####
@@ -157,7 +157,7 @@ def main(csp,
                                  ld_kwargs=ld_kwargs, 
                                  species= species)
         #####  Refine the inpainted structures  #####
-        s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.2, angle_tolerance= 20)
+        s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.15, angle_tolerance= 15)
         save_dict_list = get_save_dict_list(csp, s_list_inpaint_conventional_unit, type= 'inpaint')
 
     else:
