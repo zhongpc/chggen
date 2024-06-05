@@ -103,6 +103,9 @@ def get_save_dict_list(csp, s_list, type):
         symbol_relax = analyzer_relax.get_space_group_symbol()
         s_relax_refine = analyzer_relax.get_refined_structure()
 
+        if symbol_inpaint== 'P1' or symbol_inpaint== 'P-1':
+            continue
+
         save_dict ={'material_id': hex(int(time.time()*1e8)),
                     'formula': s_relax.composition.reduced_formula,
                     's_inpaint_asGen_cif': str(CifWriter(s)),
@@ -138,16 +141,14 @@ def main(csp,
     print("--"*5 + "Relax the generated structures from Bravis lattices" + "--"*5)
     s_list_relax = relax_structures(csp, s_list_Bravis)
 
-    s_list_relax_conventional_unit = refine_structure(s_list_relax, symprec= 0.15, angle_tolerance= 15)
-    save_dict_list = get_save_dict_list(csp, s_list_relax_conventional_unit, type = 'asGen')
+    # s_list_relax_conventional_unit = refine_structure(s_list_relax, symprec= 0.15, angle_tolerance= 15)
+    save_dict_list = get_save_dict_list(csp, s_list_relax, type = 'asGen')
 
     #####  Coarse grain the relaxed structures and get the host structures#####
     if species in chemical_formula:
         print("--"*5 + "Coarse grain the relaxed structures" + "--"*5)
         host_structure_list, num_intercalat_list = coarse_grain_framework(s_list_relax, species_to_remove= species)
-
         
-
         #####  Run inpaiting based on the host structures  #####
         print("--"*5 + "Run inpainting based on the host structures" + "--"*5)
         s_list_inpaint = csp.generate_from_host_structure(host_structure_list= host_structure_list * 3,
@@ -155,8 +156,8 @@ def main(csp,
                                  ld_kwargs=ld_kwargs, 
                                  species= species)
         #####  Refine the inpainted structures  #####
-        s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.15, angle_tolerance= 15)
-        save_dict_list += get_save_dict_list(csp, s_list_inpaint_conventional_unit, type= 'inpaint')
+        # s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.15, angle_tolerance= 15)
+        save_dict_list += get_save_dict_list(csp, s_list_inpaint, type= 'inpaint')
 
     else:
         print("The species is not in the chemical formula, will not run inpainting with framework. As-generated structures will be used.")    
