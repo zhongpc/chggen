@@ -122,10 +122,8 @@ def get_save_dict_list(csp, s_list, type):
         save_dict_list.append(save_dict)
     return save_dict_list
 
-# %%
 
 
-# %%
 def main(csp, 
          chemical_formula, atomic_volume, species,
          gen_kwargs, ld_kwargs):
@@ -158,7 +156,7 @@ def main(csp,
                                  species= species)
         #####  Refine the inpainted structures  #####
         s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.15, angle_tolerance= 15)
-        save_dict_list = get_save_dict_list(csp, s_list_inpaint_conventional_unit, type= 'inpaint')
+        save_dict_list += get_save_dict_list(csp, s_list_inpaint_conventional_unit, type= 'inpaint')
 
     else:
         print("The species is not in the chemical formula, will not run inpainting with framework. As-generated structures will be used.")    
