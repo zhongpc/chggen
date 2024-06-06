@@ -64,7 +64,11 @@ def refine_structure(s_list, symprec= 0.2, angle_tolerance= 15):
 
     for s in s_list:
         analyzer_inpaint = SpacegroupAnalyzer(structure= s, symprec= symprec, angle_tolerance= angle_tolerance)
-        symbol_inpaint = analyzer_inpaint.get_space_group_symbol()
+        try:
+            symbol_inpaint = analyzer_inpaint.get_space_group_symbol()
+        except:
+            print("Failed to get space group symbol")
+            continue
 
         if symbol_inpaint== 'P1' or symbol_inpaint== 'P-1':
             continue
@@ -82,8 +86,13 @@ def get_save_dict_list(csp, s_list, type):
     for ii, s in enumerate(s_list):
         atoms = AseAtomsAdaptor().get_atoms(s)
 
-        analyzer_inpaint = SpacegroupAnalyzer(structure= s, symprec= 0.01, angle_tolerance= 5)
-        symbol_inpaint = analyzer_inpaint.get_space_group_symbol()
+        analyzer_inpaint = SpacegroupAnalyzer(structure= s, symprec= 0.15, angle_tolerance= 15)
+        try:
+            symbol_inpaint = analyzer_inpaint.get_space_group_symbol()
+        except:
+            print("Failed to get space group symbol")
+            continue
+        
         prediction = csp.chgnet.predict_structure(s)
         E0_atom = prediction['e'] 
         F_max = np.max(np.abs(prediction['f']))
@@ -103,7 +112,7 @@ def get_save_dict_list(csp, s_list, type):
         symbol_relax = analyzer_relax.get_space_group_symbol()
         s_relax_refine = analyzer_relax.get_refined_structure()
 
-        if symbol_inpaint== 'P1' or symbol_inpaint== 'P-1':
+        if symbol_relax == 'P1' or symbol_relax == 'P-1':
             continue
 
         save_dict ={'material_id': hex(int(time.time()*1e8)),
@@ -130,6 +139,10 @@ def get_save_dict_list(csp, s_list, type):
 def main(csp, 
          chemical_formula, atomic_volume, species,
          gen_kwargs, ld_kwargs):
+    
+    # count the number of structures implemented in the inpainting and de novo generation
+    total_asGen = 0
+    total_inpaint = 0
 
     #####  Generate seven different bravis lattices via diffusion  #####
     print("--"*5 + "Generate seven different bravis lattices via diffusion" + "--"*5)
@@ -140,6 +153,7 @@ def main(csp,
     #####  Relax the generated structures from Bravis lattices #####
     print("--"*5 + "Relax the generated structures from Bravis lattices" + "--"*5)
     s_list_relax = relax_structures(csp, s_list_Bravis)
+    total_asGen += len(s_list_relax)
 
     # s_list_relax_conventional_unit = refine_structure(s_list_relax, symprec= 0.15, angle_tolerance= 15)
     save_dict_list = get_save_dict_list(csp, s_list_relax, type = 'asGen')
@@ -155,6 +169,8 @@ def main(csp,
                                  num_intercalant_list= num_intercalat_list * 3,
                                  ld_kwargs=ld_kwargs, 
                                  species= species)
+
+        total_inpaint += len(s_list_inpaint)
         #####  Refine the inpainted structures  #####
         # s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.15, angle_tolerance= 15)
         save_dict_list += get_save_dict_list(csp, s_list_inpaint, type= 'inpaint')
@@ -184,7 +200,7 @@ def main(csp,
     df = df.drop('energy', axis=1)
     df = df.drop('structure', axis=1)
 
-    return df
+    return df, total_asGen, total_inpaint
 
 
 
@@ -194,8 +210,11 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--chemical_formula", type=str, default= "ZnSP2S5", help="chemical formula")
     parser.add_argument("-v", "--atomic_volume", type=float, default= 24, help="atomic volume")
     parser.add_argument("-s", "--species", type=str, default= "Zn", help="species")
+    parser.add_argument("-n", "--num_iterations", type=int, default= 1, help="number of iterations to run the generation function")
     parser.add_argument("-d", "--device", type=str, default= "cuda", help="gpu device")
     args = parser.parse_args()
+
+
     
     
     ### Define the kwargs for the generation ###
@@ -221,9 +240,9 @@ if __name__ == "__main__":
     csp.load_e_hull_calculator(ppd_path= "/home/zhongpc/chggen/host_gen/file_trans/2023-02-07-ppd-mp.pkl.gz")
     
 
-    for num_inpaint in range(3):
+    for num_inpaint in range(args.num_iterations):
         print("**"*5 + "Start generating structures with inpainting" + "**"*5)
-        df_inpaint = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
+        df_, total_asGen, total_inpaint = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
                         species = args.species, # set the same to enable inpainting, set different to use as-generated structures
                         gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
         
@@ -231,26 +250,17 @@ if __name__ == "__main__":
         ROOT_DIR = './files/' + args.chemical_formula 
 
         if os.path.exists(ROOT_DIR + '/generate_summary'+ '_' + CURRENT_DATE +'.csv'):
-            df_inpaint.to_csv(ROOT_DIR + '/generate_summary' + '_' + CURRENT_DATE +'.csv', mode='a', index=False, header=False)
+            df_.to_csv(ROOT_DIR + '/generate_summary' + '_' + CURRENT_DATE +'.csv', mode='a', index=False, header=False)
         else:
             mkdir(ROOT_DIR)
-            df_inpaint.to_csv(ROOT_DIR + '/generate_summary' + '_' + CURRENT_DATE +'.csv', index=False, header=True)
+            df_.to_csv(ROOT_DIR + '/generate_summary' + '_' + CURRENT_DATE +'.csv', index=False, header=True)
+
     
-    # for num_asGen in range(2):
-    #     print("**"*5 + "Start generating structures without inpainting" + "**"*5)    
-    #     df_asGen = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
-    #                     species = 'Xe', # set the same to enable inpainting, set different to use as-generated structures
-    #                     gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
-        
-    #     CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
-    #     ROOT_DIR = './files/' + args.chemical_formula 
-
-    #     if os.path.exists(ROOT_DIR + '/CG_asGen_summary'+ '_' + CURRENT_DATE +'.csv'):
-    #         df_asGen.to_csv(ROOT_DIR + '/CG_asGen_summary' + '_' + CURRENT_DATE +'.csv', mode='a', index=False, header=False)
-    #     else:
-    #         mkdir(ROOT_DIR)
-    #         df_asGen.to_csv(ROOT_DIR + '/CG_asGen_summary' + '_' + CURRENT_DATE +'.csv', index=False, header=True)
-
+    asGen_rate = len(df_[df_['type'] == 'asGen']) / (total_asGen + 1e-4)
+    inpaint_rate = len(df_[df_['type'] == 'inpaint']) / (total_inpaint + 1e-4)
+    
+    print(f"Successful Rate of asGen generation: {asGen_rate}")
+    print(f"Successful Rate of inpaint generation: {inpaint_rate}")
     print("Done")
     
     # Example: python genFlow.py -d cuda:6 -c ZnSP2S5 -s Zn -v 24
