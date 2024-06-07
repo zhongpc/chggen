@@ -117,7 +117,7 @@ def get_save_dict_list(csp, s_list, type):
 
         save_dict ={'material_id': hex(int(time.time()*1e8)),
                     'formula': s_relax.composition.reduced_formula,
-                    's_inpaint_asGen_cif': str(CifWriter(s)),
+                    's_asGen_cif': str(CifWriter(s)),
                     'spacegroup_asGen': symbol_inpaint,
                     's_relax_refine_cif': str(CifWriter(s_relax_refine)),
                     'spacegroup_refine': symbol_relax,
@@ -141,7 +141,7 @@ def main(csp,
          gen_kwargs, ld_kwargs):
     
     # count the number of structures implemented in the inpainting and de novo generation
-    total_asGen = 0
+    total_denovo = 0
     total_inpaint = 0
 
     #####  Generate seven different bravis lattices via diffusion  #####
@@ -153,10 +153,10 @@ def main(csp,
     #####  Relax the generated structures from Bravis lattices #####
     print("--"*5 + "Relax the generated structures from Bravis lattices" + "--"*5)
     s_list_relax = relax_structures(csp, s_list_Bravis)
-    total_asGen += len(s_list_relax)
+    total_denovo += len(s_list_relax)
 
     # s_list_relax_conventional_unit = refine_structure(s_list_relax, symprec= 0.15, angle_tolerance= 15)
-    save_dict_list = get_save_dict_list(csp, s_list_relax, type = 'asGen')
+    save_dict_list = get_save_dict_list(csp, s_list_relax, type = 'denovo')
 
     #####  Coarse grain the relaxed structures and get the host structures#####
     if species in chemical_formula:
@@ -184,7 +184,7 @@ def main(csp,
     #####  Post process & compute phase stability & save structural information  #####
     print("--"*5 + "Post process and save structural information" + "--"*5)
     df = pd.DataFrame(columns=['material_id', 'formula', 'e_hull',
-                              's_inpaint_asGen_cif', 'spacegroup_asGen', 
+                              's_asGen_cif', 'spacegroup_asGen', 
                               's_relax_refine_cif', 'spacegroup_refine', 's_relax_cif', 
                               'Fmax_chgnet', 'E0_chgnet_atom', 'E_chgnet_atom', 'type', 'energy', 'structure'])
 
@@ -195,12 +195,15 @@ def main(csp,
     df = df.sort_values('e_hull')
     df['e_hull_diff'] = df.groupby('spacegroup_asGen')['e_hull'].diff()
     df = df[(df['e_hull_diff'].isna()) | (df['e_hull_diff'].abs() >= 0.002)]
-    
+
+    df['e_hull_chgnet'] = df['e_hull']
+
+    df = df.drop('e_hull', axis=1)
     df = df.drop('e_hull_diff', axis=1)
     df = df.drop('energy', axis=1)
     df = df.drop('structure', axis=1)
 
-    return df, total_asGen, total_inpaint
+    return df, total_denovo, total_inpaint
 
 
 
@@ -242,7 +245,7 @@ if __name__ == "__main__":
 
     for num_inpaint in range(args.num_iterations):
         print("**"*5 + "Start generating structures with inpainting" + "**"*5)
-        df_, total_asGen, total_inpaint = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
+        df_, total_denovo, total_inpaint = main(csp= csp, chemical_formula= args.chemical_formula, atomic_volume = args.atomic_volume, 
                         species = args.species, # set the same to enable inpainting, set different to use as-generated structures
                         gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
         
@@ -256,10 +259,10 @@ if __name__ == "__main__":
             df_.to_csv(ROOT_DIR + '/generate_summary' + '_' + CURRENT_DATE +'.csv', index=False, header=True)
 
     
-    asGen_rate = len(df_[df_['type'] == 'asGen']) / (total_asGen + 1e-4)
+    denovo_rate = len(df_[df_['type'] == 'denovo']) / (total_denovo + 1e-4)
     inpaint_rate = len(df_[df_['type'] == 'inpaint']) / (total_inpaint + 1e-4)
     
-    print(f"Successful Rate of asGen generation: {asGen_rate}")
+    print(f"Successful Rate of denovo generation: {denovo_rate}")
     print(f"Successful Rate of inpaint generation: {inpaint_rate}")
     print("Done")
     
