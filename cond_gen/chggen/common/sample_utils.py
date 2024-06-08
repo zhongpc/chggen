@@ -67,28 +67,36 @@ def generate_lattice_cell(lattice_type, volume, ratio = None):
         c = a
         lattice_params = (a, b, c, 90, 90, 90)
     elif lattice_type == 'monoclinic':
-        a = np.cbrt(volume / random_ratio / 0.984)
+        random_beta = np.random.uniform(60, 120)
+        a = np.cbrt(volume / random_ratio / np.sin(random_beta*np.pi/180) )
         b = random_ratio * a
         c = a
-        beta = 100
+        beta = random_beta
         lattice_params = (a, b, c, 90, beta, 90)
 
     elif lattice_type == 'aP':
-        a = np.cbrt(volume / 0.963) # scale = 0.963
+        
+        random_alpha = np.random.uniform(75, 105)
+        random_beta = np.random.uniform(75, 105)
+        random_gamma = np.random.uniform(75, 105)
+
+        scale = np.sqrt(1 - np.cos(random_alpha*np.pi/180)**2  - np.cos(random_beta*np.pi/180)**2 - np.cos(random_gamma*np.pi/180)**2 + 2*np.cos(random_alpha*np.pi/180)*np.cos(random_beta*np.pi/180)*np.cos(random_gamma*np.pi/180))
+        a = np.cbrt(volume / scale) # scale = 0.963
         b = a
         c = a
-        alpha = 80
-        beta = 85
-        gamma = 100
-        lattice_params = (a, b, c, alpha, beta, gamma)
+
+        lattice_params = (a, b, c, random_alpha, random_beta, random_gamma)
+
     elif lattice_type == 'hP':
         a = np.sqrt(volume / (np.sqrt(3) / 2) / random_ratio)
         c = a * random_ratio
         lattice_params = (a, a, c, 90, 90, 120)
+
     elif lattice_type == 'hR':
         a = np.cbrt(volume / 0.707)
         alpha = 60
         lattice_params = (a, a, a, alpha, alpha, alpha)
+        
     else:
         raise ValueError("Invalid lattice type")
     
