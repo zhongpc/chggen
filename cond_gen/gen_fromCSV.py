@@ -1,3 +1,7 @@
+import sys
+sys.path.append("/home/zhongpc/chggen/cond_gen")
+
+
 from chggen.common.sample_utils import CSP_Generator
 from chggen.common.data_utils import mkdir
 from chggen.common.sample_utils import get_inpaint_data_fromHost
@@ -19,6 +23,7 @@ import os
 import time
 from datetime import datetime
 
+
 def relax_structures(csp, s_list):
     s_list_relax = []
     for s in s_list:
@@ -28,7 +33,7 @@ def relax_structures(csp, s_list):
                             fmax = 0.1,
                             steps = 2000,
                             relax_cell = True,
-                            verbose = True,
+                            verbose = False,
                             # trajectory_path = None,
         )
         s_relax = result["final_structure"]
@@ -46,7 +51,12 @@ def coarse_grain_framework(s_list, species_to_remove):
         symbol_asGen = analyzer_asGen.get_space_group_symbol()
         print("As generated spacegroup: ", symbol_asGen)
 
-        s_frame, symbol_frame, num_species = get_coarse_grain_framework(s, species_to_remove= species_to_remove)
+        try:
+            s_frame, symbol_frame, num_species = get_coarse_grain_framework(s, species_to_remove= species_to_remove)
+        except:
+            print("Failed to coarse-grain the frame")
+            continue
+
         s_frame = s_frame.get_primitive_structure()
 
         if symbol_frame in ['P1', 'P-1', 'Pm']: 
@@ -102,7 +112,7 @@ def get_save_dict_list(csp, s_list, type):
                             fmax = 0.1,
                             steps = 2000,
                             relax_cell = True,
-                            verbose = True,
+                            verbose = False,
                             # trajectory_path = None,
         )
         s_relax = result["final_structure"]
@@ -170,6 +180,8 @@ def main(csp,
                                  ld_kwargs=ld_kwargs, 
                                  species= species)
 
+        s_list_inpaint = filter_nan_structure(s_list_inpaint)
+
         total_inpaint += len(s_list_inpaint)
         #####  Refine the inpainted structures  #####
         # s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.15, angle_tolerance= 15)
@@ -213,12 +225,11 @@ if __name__ == "__main__":
     # parser.add_argument("-c", "--chemical_formula", type=str, default= "ZnSP2S5", help="chemical formula")
     # parser.add_argument("-v", "--atomic_volume", type=float, default= 24, help="atomic volume")
     parser.add_argument("-i", "--input", type=str, default= "comp_volume.csv", help="input csv file")
-    parser.add_argument("-s", "--species", type=str, default= "Zn", help="species")
+    parser.add_argument("-s", "--species", type=str, default= "Na", help="species")
     parser.add_argument("-n", "--num_iterations", type=int, default= 1, help="number of iterations to run the generation function")
     parser.add_argument("-d", "--device", type=str, default= "cuda", help="gpu device")
     args = parser.parse_args()
 
-    # comp_list = ["Na2ZrCl6", "Na4ZrCl8", "Na4Zr2Cl12", "Na2Zr2Cl10"]
 
     df_ = pd.read_csv(args.input)
 
@@ -245,9 +256,9 @@ if __name__ == "__main__":
             )
 
     ### Define the CSP file and patched_phase diagram ###
-    csp = CSP_Generator(chggen_path = "./files/cut_7_conv_3_epoch=27-val_loss=0.87.ckpt",
-                        device='cuda:6')
-    csp.load_e_hull_calculator(ppd_path= "/home/zhongpc/chggen/host_gen/file_trans/2023-02-07-ppd-mp.pkl.gz")
+    csp = CSP_Generator(chggen_path = "/home/zhongpc/chggen/cond_gen/files/cut_7_conv_3_epoch=27-val_loss=0.87.ckpt",
+                        device='cuda')
+    csp.load_e_hull_calculator(ppd_path= "/home/zhongpc/chggen/cond_gen/files/2023-02-07-ppd-mp.pkl.gz")
 
 
     ### iterate the composition list ###
@@ -263,11 +274,11 @@ if __name__ == "__main__":
             CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
             ROOT_DIR = '.' #  + Composition(comp_str).reduced_formula
 
-            if os.path.exists(ROOT_DIR + '/generate_summary'+ '_' + CURRENT_DATE +'.csv'):
-                df_.to_csv(ROOT_DIR + '/generate_summary' + '_' + CURRENT_DATE +'.csv', mode='a', index=False, header=False)
+            if os.path.exists(ROOT_DIR + '/generate_summary.csv'):
+                df_.to_csv(ROOT_DIR + '/generate_summary.csv', mode='a', index=False, header=False)
             else:
                 mkdir(ROOT_DIR)
-                df_.to_csv(ROOT_DIR + '/generate_summary' + '_' + CURRENT_DATE +'.csv', index=False, header=True)
+                df_.to_csv(ROOT_DIR + '/generate_summary.csv', index=False, header=True)
 
         
         denovo_rate = len(df_[df_['type'] == 'denovo']) / (total_denovo + 1e-4)
@@ -279,7 +290,6 @@ if __name__ == "__main__":
             file.write(f"Successful Rate of denovo generation: {denovo_rate}\n")
             file.write(f"Successful Rate of denovo generation: {denovo_rate}\n")
             file.write(f"Successful Rate of inpaint generation: {inpaint_rate}\n")
-            file.write("Done\n")
                 
         print(f"Successful Rate of denovo generation: {denovo_rate}")
         print(f"Successful Rate of inpaint generation: {inpaint_rate}")
