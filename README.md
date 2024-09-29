@@ -1,4 +1,4 @@
-# enhan_gen
+# CHGGen
 
 This is a repository for `CHGGen`: an SE(3)--equivariant diffusion model built upon `e3nn` and `NequIP` frameworks. 
 
