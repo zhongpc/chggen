@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from typing import List
+import os
 import copy
 from pathlib import Path
 from p_tqdm import p_umap
-from tqdm import tqdm
+ 
 
 import pandas as pd
 import numpy as np
@@ -14,17 +16,11 @@ from sklearn.metrics import (
     recall_score, 
     precision_score,
 )
-from scipy.interpolate import interp1d
 import torch
-from torch_geometric.data import DataLoader
 
-from pymatgen.core.structure import Structure
-from pymatgen.core.lattice import Lattice
+from pymatgen.core import Structure, Lattice, Element
 from pymatgen.analysis.graphs import StructureGraph
 from pymatgen.analysis import local_env
-
-from chggen.common.operations import PModulo
-from chggen.pl_modules.wrapped_normal_distribution import wND
 
 
 
@@ -623,18 +619,18 @@ class StandardScalerTorch(object):
         self.stds = stds
 
     def fit(self, X) -> None:
-        X = torch.tensor(X, dtype=torch.float)
+        X = X.clone().detach().float()
         self.means = torch.mean(X, dim=0)
         # https://github.com/pytorch/pytorch/issues/29372
         self.stds = torch.std(X, dim=0, unbiased=False) + EPSILON
         return None
 
     def transform(self, X) -> torch.Tensor:
-        X = torch.tensor(X, dtype=torch.float)
+        X = X.clone().detach().float()
         return (X - self.means) / self.stds
 
     def inverse_transform(self, X) -> torch.Tensor:
-        X = torch.tensor(X, dtype=torch.float)
+        X = X.clone().detach().float()
         return X * self.stds + self.means
 
     def match_device(self, tensor) -> None:
@@ -659,7 +655,7 @@ class StandardScalerTorch(object):
 
 def get_scaler_from_data_list(data_list, key):
     """Get scaler (std, mean) assigned by key from data_list."""
-    targets = torch.tensor([d[key] for d in data_list])
+    targets = torch.tensor(np.array([d[key] for d in data_list]))
     scaler = StandardScalerTorch()
     scaler.fit(targets)
     return scaler
@@ -677,49 +673,6 @@ def get_scaler(dataset = None, use_prop_scaler = False, scaler_path = None):
         lattice_scaler = torch.load(
             Path(scaler_path) / 'lattice_scaler.pt')
     return lattice_scaler
-
-def frac_score_norms_interp(
-    dataloader: DataLoader, sigmas: torch.Tensor, 
-) -> torch.Tensor:
-    """Get the normalization factor for fractional coordinate denoising.
-    
-    Mathematics:
-        N(sigma) = E ||  grad_Ft(log(q(Ft|F0))) ||_2^2
-    
-    Args:
-        dataset (CHGNetDataset): dataset for training.
-        sigmas (Tensor): noise level for each sample.
-    
-    Returns:
-        frac_score_norms_interp (interp1d): interpolation function for 
-            the normalization factor.
-    """
-    pmodulo = PModulo()
-    wnd = wND(n=10)
-    target_frac_score_norms = []
-    for i, noise_level in enumerate(tqdm(sigmas)):
-        temp_frac_score_norms = []
-        for batch in dataloader:
-            sigmas_per_atom = noise_level[None].repeat_interleave(batch.num_atoms.sum(), dim=0)
-            normal_noises = torch.randn_like(batch.frac_coords)
-            noises_per_atom = normal_noises * sigmas_per_atom[:, None]
-            noisy_coords =  pmodulo.to(sigmas.device)(batch.frac_coords + noises_per_atom)
-            target_frac_score = wnd.to(sigmas.device).log_grad(
-                noisy_coords, 
-                mu=batch.frac_coords, 
-                sigma=sigmas_per_atom[:,None].repeat_interleave(3, dim=-1),
-            )
-            temp_frac_score_norms.append(target_frac_score)
-        temp_frac_score_norms = torch.cat(temp_frac_score_norms, dim=0)
-        temp_frac_score_norms = torch.sqrt((temp_frac_score_norms**2).sum(dim=-1).mean(dim=0))
-        target_frac_score_norms.append(temp_frac_score_norms)
-    target_frac_score_norms = torch.tensor(target_frac_score_norms)
-    
-    # Interpolate the normalization factor for each noise level.
-    frac_score_norms = interp1d(
-        sigmas, target_frac_score_norms, kind='cubic', fill_value='extrapolate',
-    )
-    return frac_score_norms
 
 def get_exp_sigmas(
     sigma_begin: float, sigma_end: float, num_noise_level: int, 
@@ -929,3 +882,109 @@ class StandardScaler:
             np.isnan(transformed_with_nan), self.replace_nan_token, transformed_with_nan)
 
         return transformed_with_none
+    
+def get_pymatgen_structure(
+    lengths: torch.Tensor, 
+    angles: torch.Tensor, 
+    num_atoms: torch.Tensor, 
+    frac_coords: torch.Tensor, 
+    atom_types: torch.Tensor,
+) -> List[Structure]:
+    """Get pymatgen structure from crystal discreptor tensors.
+    
+    Args:
+        lengths (tensor): length of lattice vectors, shape (num structure, 3).
+        angles (tensor): angle of lattice vectors, shape (num structure, 3).
+        num_atoms (tensor): number of atoms in each structure, shape (num structure,).
+        frac_coords (tensor): fractional coordinates of atoms, shape (num atom, 3).
+        atom_types (tensor): atomic number , shape (num atom,).
+    
+    Returns:
+        s_list (list): list of pymatgen structure.
+    """
+    batch = torch.arange(len(num_atoms), device = num_atoms.device)
+    batch = batch.repeat_interleave(num_atoms)
+    s_list = []
+    for ii in range(len(num_atoms)):
+        indices = torch.where(batch == ii)[0] 
+        if len(indices) == 0: # remove the structure with zero atoms
+            continue
+        Latt = Lattice.from_parameters(a = lengths[ii,0].cpu(), b = lengths[ii,1].cpu(), c = lengths[ii,2].cpu(),
+                                    alpha= angles[ii, 0].cpu(), beta= angles[ii,1].cpu(), gamma=angles[ii, 2].cpu())
+
+        frac_ = frac_coords[indices]
+        type_ = atom_types[indices]
+        species_ = [Element.from_Z(ele_Z) for ele_Z in type_]
+
+        s_gen = Structure(lattice= Latt , species= species_, coords= frac_.cpu().detach().numpy(),
+                        to_unit_cell=False,coords_are_cartesian=False)
+
+        s_list.append(s_gen)
+    return s_list 
+
+
+
+
+def get_tensor_from_structure(structure: Structure, 
+                              property = None):
+    """Get tensor from pymatgen structure."""
+
+    s0 = structure
+
+    cur_atom_types = []
+    cur_frac_coords = []
+    cur_cart_coords = []
+    for site in s0.sites:
+        cur_atom_types.append(site.specie.Z)
+        cur_frac_coords.append(site.frac_coords)
+        cur_cart_coords.append(site.coords)
+    cur_atom_types = torch.tensor(cur_atom_types, dtype = torch.int32)
+
+    # Add random coordinates for host and inserted ions.
+    # cur_frac_coords = torch.rand(len(cur_atom_types), 3, requires_grad = False, dtype = torch.float32)
+    cur_frac_coords = torch.tensor(cur_frac_coords, dtype = torch.float32)
+
+    # Cell information.
+    num_atoms = torch.tensor([len(cur_atom_types)], dtype = torch.int32)
+    angles = torch.tensor([s0.lattice.angles],)
+    lengths = torch.tensor([s0.lattice.lengths],)
+
+    property = torch.tensor([0], dtype = torch.float32) if property is None else torch.tensor([property], dtype= torch.float32)
+
+    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, property, cur_cart_coords
+
+
+
+# Construct dataloader
+def get_batch_tensor_from_structures(structures: List[Structure],
+                                     properties = None):
+    if properties is not None:
+        cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties, cur_cart_coords = \
+            zip(*[get_tensor_from_structure(structure= structure, property= property) for structure, property in zip(structures, properties)])
+
+    # Construct batch data
+    cur_atom_types = torch.cat(cur_atom_types, axis = 0)
+    cur_frac_coords = torch.cat(cur_frac_coords, axis = 0)
+    num_atoms = torch.cat(num_atoms, axis = 0)
+    angles = torch.cat(angles, axis = 0)
+    lengths = torch.cat(lengths, axis = 0)
+    properties = torch.cat(properties, axis = 0)
+
+    return cur_atom_types, cur_frac_coords, num_atoms, angles, lengths, properties
+
+
+def mkdir(path: str):
+    """Make directory.
+
+    Args:
+        path (str): directory name
+
+    Returns:
+        path
+    """
+    folder = os.path.exists(path)
+    if not folder:
+        os.makedirs(path)
+    else:
+        print("Folder exists")
+    return path

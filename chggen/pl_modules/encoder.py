@@ -28,33 +28,8 @@ if TYPE_CHECKING:
     from chgnet import PredTask
 
 
-# New CHGNet_encoder is compatible with CHGNet (0.3.0).
+
 class CHGNet_encoder(nn.Module):
-    def __init__(self, model_path = None, return_crystal_feas = True):
-        super().__init__()
-        self.return_crystal_feas = return_crystal_feas
-
-        if model_path is None:
-            self.model = CHGNet().load()
-        else:
-            self.model = CHGNet.from_file(model_path)
-
-        self.graph_converter = self.model.graph_converter
-
-    def forward(self,
-            graphs: Sequence[CrystalGraph],
-            task: PredTask = "e",
-            return_atom_feas: bool = False,
-            return_crystal_feas: bool = True,
-            ):
-        prediction = self.model(graphs, task, 
-                                # return_site_energies = False,
-                                return_atom_feas = False,
-                                return_crystal_feas = self.return_crystal_feas) # True for crystal feature
-        
-        return prediction
-
-class CHGNet_encoder_old(nn.Module):
     """Crystal Hamiltonian Graph neural Network
     A model that takes in a crystal graph and output energy, force, magmom, stress.
     """
@@ -853,3 +828,30 @@ class CompositionEncoder(nn.Module):
     def __init__(self, num_composition: int) -> None:
         """Initialize CompositionEncoder."""
         pass
+
+
+# New CHGNet_encoder is compatible with CHGNet (0.3.0).
+class _CHGNet_encoder(nn.Module):
+    def __init__(self, model_path = None, return_crystal_feas = True):
+        super().__init__()
+        self.return_crystal_feas = return_crystal_feas
+
+        if model_path is None:
+            self.model = CHGNet().load()
+        else:
+            self.model = CHGNet.from_file(model_path)
+
+        self.graph_converter = self.model.graph_converter
+
+    def forward(self,
+            graphs: Sequence[CrystalGraph],
+            task: PredTask = "e",
+            return_atom_feas: bool = False,
+            return_crystal_feas: bool = True,
+            ):
+        prediction = self.model(graphs, task, 
+                                # return_site_energies = False,
+                                return_atom_feas = False,
+                                return_crystal_feas = self.return_crystal_feas) # True for crystal feature
+        
+        return prediction

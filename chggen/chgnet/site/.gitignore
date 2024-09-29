@@ -1,8 +1,0 @@
-# dependencies
-node_modules
-
-# production build
-.svelte-kit
-build
-src/routes/api/*.md
-src/MetricsTable.svelte
