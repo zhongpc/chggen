@@ -487,6 +487,10 @@ def run_inpaint_SDE(model,
                     ld_kwargs,
                     species = 'Li',
                     ):
+    
+
+    if host_structure_list == []:
+        return [], None
 
     gen_inputs_batch = get_batch_inpaint_data_fromHost(model = model, #  
                                        host_structure_list= host_structure_list,
@@ -495,39 +499,6 @@ def run_inpaint_SDE(model,
                                     )
     
 
-    # insert_ion = Element(species)
-    # ori_frac_coords = torch.tensor(host_structure.frac_coords)
-
-    # cur_atom_types = []
-    # atom_masks = []
-    # for site in host_structure.sites:
-    #     cur_atom_types.append(site.specie.Z)
-    #     atom_masks.append(0)
-
-    # cur_atom_types += [insert_ion.Z] * num_insert_ion
-    # cur_atom_types = torch.tensor(cur_atom_types)
-
-    # atom_masks += [1] * num_insert_ion
-    # atom_masks = torch.tensor(atom_masks)
-
-    # insert_frac_coords = torch.rand(num_insert_ion, 3, requires_grad = False)
-
-    # ori_frac_coords = torch.cat((ori_frac_coords, insert_frac_coords), axis = 0)
-    # ori_frac_coords = torch.tensor(ori_frac_coords)
-
-    # num_atoms = torch.tensor([len(cur_atom_types)])
-
-    # angles = torch.tensor([host_structure.lattice.angles])
-    # lengths = torch.tensor([host_structure.lattice.lengths])*1.0
-
-    # # Quantization
-    # lengths = lengths.float().to(DEVICE)
-    # angles = angles.float().to(DEVICE)
-    # num_atoms = num_atoms.int().to(DEVICE)
-    # frac_coords = ori_frac_coords.float().to(DEVICE)
-    # atom_masks = atom_masks.bool().to(DEVICE)
-    # cur_atom_types = cur_atom_types.int().to(DEVICE)
-    # ori_frac_coords = ori_frac_coords.float().to(DEVICE)
 
     cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths = gen_inputs_batch
 
