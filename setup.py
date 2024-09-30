@@ -7,6 +7,7 @@ setup(
     package_dir={"": "src"},
     install_requires=[
         "pymatgen==2023.9.10",
+        "e3nn==0.5.1",
     ],
     entry_points={
         "console_scripts": [
