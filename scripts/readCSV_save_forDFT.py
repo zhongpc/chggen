@@ -11,13 +11,21 @@ import time
 from datetime import datetime
 
 
-def main(file_path, save_root_string = './forVASP_'):
+def main(file_path, 
+         save_root_string = './forVASP_',
+         filter_e_hull = 0.03,):
+    """
+    Read the csv file and save the structures in the cif format for DFT calculations.
+        file_path: str - the path to the csv file
+        save_root_string: str - the root path to save the cif files
+        filter_e_hull: float - the threshold for the energy above hull to filter the structures (eV/atom)
+    """
 
     df_all = pd.read_csv(file_path)
 
     df_all = df_all.sort_values(['formula', 'e_hull_chgnet'])
     df_all['min_e_hull'] = df_all.groupby('formula')['e_hull_chgnet'].transform('min')
-    df_all['filtered'] = (df_all['e_hull_chgnet'] <= 0.03) | (df_all['e_hull_chgnet'] == df_all['min_e_hull'])
+    df_all['filtered'] = (df_all['e_hull_chgnet'] <= filter_e_hull) | (df_all['e_hull_chgnet'] == df_all['min_e_hull'])
     df_all = df_all[df_all['filtered']].drop(['min_e_hull', 'filtered'], axis=1)
 
 
@@ -55,10 +63,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input", type=str, default= "./gen_summary.csv", help="The csv file to be read")
     parser.add_argument("-o", "--output", type=str, default= "./forVASP_", help="The csv file to be read")
-
     args = parser.parse_args()
 
-    main(file_path = args.input, save_root_string=args.output)
+    main(file_path = args.input, 
+         save_root_string=args.output)
 
 
 

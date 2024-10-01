@@ -124,13 +124,15 @@ def get_coarse_grain_framework(structure: Structure,
 
         s_frame.remove_species([species_to_remove])
 
-        analyzer_CG = SpacegroupAnalyzer(structure= s_frame, 
+        try:
+            analyzer_CG = SpacegroupAnalyzer(structure= s_frame, 
                                          symprec= symprec, 
                                          angle_tolerance= angle_tolerance)
-        
-        s_CG = analyzer_CG.get_conventional_standard_structure()
-
-        symbol_CG= analyzer_CG.get_space_group_symbol()
+            s_CG = analyzer_CG.get_conventional_standard_structure()
+            symbol_CG= analyzer_CG.get_space_group_symbol()
+        except:
+            s_CG = s_frame
+            symbol_CG = 'P1'
 
         # print("symmetry: ", symprec, "angle_tolerance: ", angle_tolerance)
         # print("CG spacegroup: ", symbol_CG) 
