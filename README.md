@@ -9,8 +9,8 @@ This is a repository for `CHGGen`: an SE(3)--equivariant diffusion model built u
 
 The model be run on a GPU machine. For example, one can install the relevant packages using the following commands
 ```
-conda create -n enhan_gen python=3.9
-conda activate enhan_gen
+conda create -n chggen python=3.9
+conda activate chggen
 
 pip3 install torch torchvision torchaudio 
 
