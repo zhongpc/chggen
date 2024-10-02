@@ -81,14 +81,14 @@ def generate_lattice_cell(lattice_type, volume, ratio = None):
         random_gamma = np.random.uniform(75, 105)
 
         scale = np.sqrt(1 - np.cos(random_alpha*np.pi/180)**2  - np.cos(random_beta*np.pi/180)**2 - np.cos(random_gamma*np.pi/180)**2 + 2*np.cos(random_alpha*np.pi/180)*np.cos(random_beta*np.pi/180)*np.cos(random_gamma*np.pi/180))
-        a = np.cbrt(volume / scale) # scale = 0.963
+        a = np.cbrt(volume / scale) 
         b = a
         c = a
 
         lattice_params = (a, b, c, random_alpha, random_beta, random_gamma)
 
     elif lattice_type == 'hP':
-        a = np.sqrt(volume / (np.sqrt(3) / 2) / random_ratio)
+        a = np.cbrt(volume / (np.sqrt(3) / 2) / random_ratio)
         c = a * random_ratio
         lattice_params = (a, a, c, 90, 90, 120)
 
