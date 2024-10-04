@@ -416,12 +416,10 @@ def run_SDE_fromBravis(model,
 
     return s_list, results
 
-
-
-def get_inpaint_data_fromHost(model,
-                              host_structure, 
-                              num_insert_ion,
-                              species = None):
+def get_inpaint_data_fromHost_old(model,
+                                host_structure, 
+                                num_insert_ion,
+                                species = None):
     
 
     if species is None:
@@ -449,6 +447,56 @@ def get_inpaint_data_fromHost(model,
     cur_frac_coords = torch.tensor(host_structure.frac_coords, device = DEVICE)
     cur_frac_coords = torch.concat((cur_frac_coords, insert_frac_coords), axis = 0)
     cur_frac_coords = torch.tensor(cur_frac_coords, dtype = torch.float32)
+
+    # Cell information.
+    num_atoms = torch.tensor([len(cur_atom_types)], device = DEVICE, dtype=torch.int32)
+    angles = torch.tensor([host_structure.lattice.angles], device = DEVICE)
+    lengths = torch.tensor([host_structure.lattice.lengths], device = DEVICE)
+
+    return cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths
+
+
+
+
+
+def get_inpaint_data_fromHost(model,
+                              host_structure, 
+                              num_insert_ion,
+                              species = None):
+    
+    DEVICE = model.device
+
+    cur_atom_types = []
+    atom_masks = []
+    for site in host_structure.sites:
+        cur_atom_types.append(site.specie.Z)
+        atom_masks.append(0)
+
+    if species is None:
+        raise ValueError("Please specify the ion (as a string) to be inserted.")
+    elif isinstance(species, str):
+        species = [species]
+
+    if isinstance(num_insert_ion, int):
+        num_insert_ion = [num_insert_ion]
+    
+
+    cur_frac_coords = torch.tensor(host_structure.frac_coords, device = DEVICE)
+    
+    for n, ele in zip(num_insert_ion, species):
+        insert_ion = Element(ele)
+        # Add atom types and atom masks for inserted ions.
+        cur_atom_types += [insert_ion.Z] * n
+        atom_masks += [1] * n
+
+        # Add random coordinates for host and inserted ions.
+        insert_frac_coords = torch.rand(n, 3, requires_grad = False, device = DEVICE, dtype = torch.float32)
+        cur_frac_coords = torch.concat((cur_frac_coords, insert_frac_coords), axis = 0)
+
+    cur_frac_coords = torch.tensor(cur_frac_coords, dtype = torch.float32)
+    cur_atom_types = torch.tensor(cur_atom_types, device = DEVICE, dtype = torch.int32)
+    atom_masks = torch.tensor(atom_masks, device = DEVICE).bool()
+
 
     # Cell information.
     num_atoms = torch.tensor([len(cur_atom_types)], device = DEVICE, dtype=torch.int32)
