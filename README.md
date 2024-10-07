@@ -21,6 +21,8 @@ pip install torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-2.2.2+c
 pip install matplotlib ase pymatgen==2023.9.10 p_tqdm cvxpy
 
 pip install e3nn==0.5.1
+
+pip install -e .
 ```
 
 
