@@ -9,18 +9,20 @@ This is a repository for `CHGGen`: an SE(3)--equivariant diffusion model built u
 
 The model be run on a GPU machine. For example, one can install the relevant packages using the following commands
 ```
-conda create -n chggen python=3.9
+conda create -n chggen
 conda activate chggen
 
-pip3 install torch torchvision torchaudio 
+pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu121 
 
 pip3 install pytorch-lightning torch_geometric 
 
 pip install torch_scatter torch_sparse -f https://data.pyg.org/whl/torch-2.2.2+cu121.html
 
-pip install matplotlib ase pymatgen==2023.9.10 p_tqdm cvxpy
+pip install matplotlib ase pymatgen==2023.9.10 p_tqdm cvxpy scikit-learn
 
 pip install e3nn==0.5.1
+
+pip install -e .
 ```
 
 
