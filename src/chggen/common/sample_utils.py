@@ -6,10 +6,12 @@ import os
 
 from chggen.pl_modules.model import CHGGen
 from chggen.common.data_utils import get_scaler, mkdir, get_pymatgen_structure
+from chggen.pl_data.dataset import check_duplicate_atoms
 from chggen.common.e_hull_calculator import EHullCalculator
 
 from chgnet.model.model import CHGNet
 from chgnet.model.dynamics import StructOptimizer
+
 
 from pymatgen.core import Structure, Composition, Element, Lattice
 from pymatgen.io.ase import AseAtomsAdaptor
@@ -149,7 +151,8 @@ def get_coarse_grain_framework(structure: Structure,
 
 def run_SDE_from_structures(model, 
                             s_init_list,
-                            ld_kwargs):
+                            ld_kwargs,
+                            check_duplicates = False):
     """
     Run the reverse SDE (Stochastic Differential Equation) based on a given list of initial structures.
 
@@ -169,7 +172,9 @@ def run_SDE_from_structures(model,
 
     device = model.device
 
-    for s_init in s_init_list:    
+    for s_init in s_init_list:
+        if check_duplicates:
+            s_init = check_duplicate_atoms(s_init)
         lengths = s_init.lattice.lengths
         angles = s_init.lattice.angles
     
@@ -541,7 +546,9 @@ def run_inpaint_SDE(model,
 
     if host_structure_list == []:
         return [], None
-
+    
+    host_structure_list = [check_duplicate_atoms(host_structure) for host_structure in host_structure_list]
+    
     gen_inputs_batch = get_batch_inpaint_data_fromHost(model = model, #  
                                        host_structure_list= host_structure_list,
                                        num_intercalant_list = num_intercalant_list,

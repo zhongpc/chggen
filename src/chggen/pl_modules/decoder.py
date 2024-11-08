@@ -141,7 +141,7 @@ class NequipDecoder(nn.Module):
         if properties is None or properties.nelement() == 0: # no property guidance
             # print("No property guidance")
             return pred_cart_coord_diff_0
-        else:       
+        else:
             properties = properties.repeat_interleave(num_atoms, dim=0) # expand the property to each atom node
 
             data = Data(
