@@ -11,7 +11,37 @@ from torch_geometric.data import Data
 
 from pymatgen.core import Structure
 
+def check_duplicate_atoms(structure : Structure, tol = 0.01):
+    """
+    Checks if the structure contains any duplicate atoms. 
+    Duplicate atoms will lead to numerical instability during both training and inference
+    """
 
+    any_duplicates = False
+
+    unique_atom_types = []
+    unique_atom_coords = []
+
+    for i, site in enumerate(structure):
+        duplicate = False
+        for atom_type, atom_coords in zip(unique_atom_types, unique_atom_coords):
+            if (atom_type == str(site.specie)) and (np.mean(np.square(atom_coords - site.coords)) < 0.01):
+                duplicate = True
+                break
+        if duplicate:
+            any_duplicates = True
+            continue
+        
+        unique_atom_types.append(str(site.specie))
+        unique_atom_coords.append(site.coords)
+    
+    if any_duplicates:
+        return Structure(structure.lattice, 
+                         unique_atom_types, 
+                         unique_atom_coords, 
+                         coords_are_cartesian = True)
+    
+    return structure
 
 def process_one(
     row: pd.DataFrame,
@@ -26,6 +56,8 @@ def process_one(
         site_tolerance=0,
         frac_tolerance=0,
     )
+    
+    structure = check_duplicate_atoms(structure)
 
     if structure.num_sites >= 1000:             # Prevent GPU memory overflow.
         print(f"Too many atoms in {row['material_id']}, skip this structure.")
