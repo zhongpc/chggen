@@ -6,12 +6,10 @@ import os
 
 from chggen.pl_modules.model import CHGGen
 from chggen.common.data_utils import get_scaler, mkdir, get_pymatgen_structure
-from chggen.pl_data.dataset import check_duplicate_atoms
 from chggen.common.e_hull_calculator import EHullCalculator
 
 from chgnet.model.model import CHGNet
 from chgnet.model.dynamics import StructOptimizer
-
 
 from pymatgen.core import Structure, Composition, Element, Lattice
 from pymatgen.io.ase import AseAtomsAdaptor
@@ -50,52 +48,56 @@ def compute_ewald_energy_single_structure(
         return ewald_energy
 
 
-def generate_lattice_cell(lattice_type, volume, ratio = None):
-    if ratio is None:
-        random_ratio = np.random.uniform(1, 1.5)
-    else:
-        random_ratio = ratio
+def generate_lattice_cell(lattice_type, volume, 
+                          random_ratio_b = 1,
+                          random_ratio_c = 1,
+                          ):
+    
+    if random_ratio_b is 1:
+        random_ratio_b = np.random.uniform(0.75, 1.25)
+    if random_ratio_c is 1:
+        random_ratio_c = np.random.uniform(0.75, 1.25)
 
     if lattice_type == 'cubic':
         a = np.cbrt(volume)
         lattice_params = (a, a, a, 90, 90, 90)
     elif lattice_type == 'tetragonal':
-        a = np.cbrt(volume / random_ratio)
-        c = random_ratio * a
+        a = np.cbrt(volume / random_ratio_c)
+        c = random_ratio_c * a
         lattice_params = (a, a, c, 90, 90, 90)
     elif lattice_type == 'orthorhombic':
-        a = np.cbrt(volume / random_ratio)
-        b = random_ratio * a
-        c = a
+        a = np.cbrt(volume / random_ratio_c / random_ratio_b)
+        b = random_ratio_b * a
+        c = random_ratio_c * a
         lattice_params = (a, b, c, 90, 90, 90)
-    elif lattice_type == 'monoclinic':
+    elif lattice_type == 'monoclinic': # abc sin(beta)
         random_beta = np.random.uniform(60, 120)
-        a = np.cbrt(volume / random_ratio / np.sin(random_beta*np.pi/180) )
-        b = random_ratio * a
-        c = a
+        a = np.cbrt(volume / random_ratio_b / random_ratio_c / np.sin(random_beta*np.pi/180) )
+        b = random_ratio_b * a
+        c = random_ratio_c * a
         beta = random_beta
         lattice_params = (a, b, c, 90, beta, 90)
 
-    elif lattice_type == 'aP':
+    elif lattice_type == 'triclinic':
         
-        random_alpha = np.random.uniform(75, 105)
-        random_beta = np.random.uniform(75, 105)
-        random_gamma = np.random.uniform(75, 105)
+        random_alpha = np.random.uniform(60, 120)
+        random_beta = np.random.uniform(60, 120)
+        random_gamma = np.random.uniform(60, 120)
 
         scale = np.sqrt(1 - np.cos(random_alpha*np.pi/180)**2  - np.cos(random_beta*np.pi/180)**2 - np.cos(random_gamma*np.pi/180)**2 + 2*np.cos(random_alpha*np.pi/180)*np.cos(random_beta*np.pi/180)*np.cos(random_gamma*np.pi/180))
-        a = np.cbrt(volume / scale) 
-        b = a
-        c = a
+        a = np.cbrt(volume / scale / random_ratio_b / random_ratio_c)
+        b = a * random_ratio_b  
+        c = a * random_ratio_c
 
         lattice_params = (a, b, c, random_alpha, random_beta, random_gamma)
 
-    elif lattice_type == 'hP':
-        a = np.cbrt(volume / (np.sqrt(3) / 2) / random_ratio)
-        c = a * random_ratio
+    elif lattice_type == 'hexagonal':
+        a = np.cbrt(volume / (np.sqrt(3) / 2) / random_ratio_c)
+        c = a * random_ratio_c
         lattice_params = (a, a, c, 90, 90, 120)
 
-    elif lattice_type == 'hR':
-        a = np.cbrt(volume / 0.707)
+    elif lattice_type == 'rhombohedral': #  only consider the caset with 60 degree        
+        a = np.cbrt(volume / 0.7071)
         alpha = 60
         lattice_params = (a, a, a, alpha, alpha, alpha)
         
@@ -151,8 +153,7 @@ def get_coarse_grain_framework(structure: Structure,
 
 def run_SDE_from_structures(model, 
                             s_init_list,
-                            ld_kwargs,
-                            check_duplicates = False):
+                            ld_kwargs):
     """
     Run the reverse SDE (Stochastic Differential Equation) based on a given list of initial structures.
 
@@ -172,9 +173,7 @@ def run_SDE_from_structures(model,
 
     device = model.device
 
-    for s_init in s_init_list:
-        if check_duplicates:
-            s_init = check_duplicate_atoms(s_init)
+    for s_init in s_init_list:    
         lengths = s_init.lattice.lengths
         angles = s_init.lattice.angles
     
@@ -306,7 +305,8 @@ def run_SDE_fromBravis(model,
                        atom_volume, # avg atom volume
                        gen_kwargs,
                        ld_kwargs, 
-                       ratio = None):
+                       ratio_list = [0.75, 0.875, 1.125, 1.25],  # ratio of lattice parameters
+                       ):
     """
     Run the SDE with experiencing different Bravis lattices
 
@@ -335,19 +335,39 @@ def run_SDE_fromBravis(model,
     comp = Composition(comp_str)
     num_atoms_formula = int(comp.num_atoms)
 
-    if isinstance(ratio, float):
-        num_atoms = [num_atoms_formula] * 7 # for 7 different lattice types
+    num_structures = 0
 
-    elif isinstance(ratio, list):
-        num_atoms = [num_atoms_formula] * 7 * len(ratio) # for 7 different lattice types
-        print("num_atoms", num_atoms)
+    # if isinstance(ratio, float):
+    #     num_atoms = [num_atoms_formula] * 7 # for 7 different lattice types
+
+    # elif isinstance(ratio, list):
+    #     num_atoms = [num_atoms_formula] * 7 * len(ratio) # for 7 different lattice types
+    #     print("num_atoms", num_atoms)
+
 
     
 
 
-    for lattice_type in ['cubic', 'tetragonal', 'orthorhombic', 'monoclinic', 'aP', 'hP', 'hR']:
-        if isinstance(ratio, float):
-            lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * atom_volume, ratio = ratio)
+    for lattice_type in ['cubic', 'rhombohedral']:
+        num_structures += 1
+        lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * atom_volume)
+        lengths.append(lattice_params[:3])
+        angles.append(lattice_params[3:])
+
+        atom_types = []
+        comp_dict = comp.as_dict()
+        for key in comp_dict:
+            amount = comp_dict[key]
+            element = Element(key)
+            atom_types += [element.Z] * int(amount)
+        atom_types = atom_types * gen_kwargs.num_cell
+        all_atom_types += atom_types
+    
+    for lattice_type in ['tetragonal', 'hexagonal']:
+        for r in ratio_list:
+            num_structures += 1
+            lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * atom_volume, 
+                                                   random_ratio_c = r)
             lengths.append(lattice_params[:3])
             angles.append(lattice_params[3:])
 
@@ -359,10 +379,13 @@ def run_SDE_fromBravis(model,
                 atom_types += [element.Z] * int(amount)
             atom_types = atom_types * gen_kwargs.num_cell
             all_atom_types += atom_types
-        
-        elif isinstance(ratio, list):
-            for r in ratio:
-                lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * atom_volume, ratio = r)
+
+    for lattice_type in ['monoclinic', 'orthorhombic', 'triclinic']:
+        for r_b in ratio_list:
+            for r_c in ratio_list:
+                num_structures += 1
+                lattice_params = generate_lattice_cell(lattice_type, num_atoms_formula * atom_volume, 
+                                                       random_ratio_b= r_b, random_ratio_c = r_c)
                 lengths.append(lattice_params[:3])
                 angles.append(lattice_params[3:])
 
@@ -375,8 +398,14 @@ def run_SDE_fromBravis(model,
                 atom_types = atom_types * gen_kwargs.num_cell
                 all_atom_types += atom_types
 
-        
+    num_atoms = [num_atoms_formula] * num_structures # 
 
+    # if isinstance(ratio, float):
+    #     num_atoms = [num_atoms_formula] * 7 # for 7 different lattice types
+
+    # elif isinstance(ratio, list):
+    #     num_atoms = [num_atoms_formula] * 7 * len(ratio) # for 7 different lattice types
+    #     print("num_atoms", num_atoms)
         
     num_atoms = torch.tensor(num_atoms, device = DEVICE)
     cur_atom_types = torch.tensor(all_atom_types, device = DEVICE)
@@ -461,9 +490,6 @@ def get_inpaint_data_fromHost_old(model,
     return cur_atom_types, atom_masks, cur_frac_coords, num_atoms, angles, lengths
 
 
-
-
-
 def get_inpaint_data_fromHost(model,
                               host_structure, 
                               num_insert_ion,
@@ -546,9 +572,7 @@ def run_inpaint_SDE(model,
 
     if host_structure_list == []:
         return [], None
-    
-    host_structure_list = [check_duplicate_atoms(host_structure) for host_structure in host_structure_list]
-    
+
     gen_inputs_batch = get_batch_inpaint_data_fromHost(model = model, #  
                                        host_structure_list= host_structure_list,
                                        num_intercalant_list = num_intercalant_list,
@@ -654,7 +678,8 @@ class CSP_Generator():
                                                 atom_volume = atom_volume,
                                                 gen_kwargs = gen_kwargs,
                                                 ld_kwargs= ld_kwargs,
-                                                ratio =  ratio_list)
+                                                ratio_list= ratio_list # for random search of the lattice constant
+                                                )
         
         return s_Bravis_list
     
@@ -683,126 +708,3 @@ class CSP_Generator():
                                         ld_kwargs=ld_kwargs,
                                         species=species)
         return s_list
-                           
-
-
-def generate_crystal(fv_dict, # dictionary of formula and volume
-                     CHGGEN_PATH, # path to the chggen model
-                     CUDA_DEVICE = 'cuda:0',
-                     ):
-
-    comp_str = fv_dict['formula']
-    atom_volume = fv_dict['volume']
-
-
-    for s_init, type_init in zip(s_init_list, init_type_list): # loop over different cubic lattice generated structures
-        # init the structure energy list
-        df = pd.DataFrame(columns=['material_id', 'formula', 'lattice_type', 'mutation', 
-                                'spacegroup_init', 's_refine_init_cif',  # as generated structure information 
-                                'spacegroup_refine', 's_refine_relax_cif', # relaxed by pretrained chgnet structure information
-                                's_init_cif', 's_relax_cif', 'E0_chgnet', 'E_chgnet']) # energy information from chgnet
-
-
-
-        for mutation in range(gen_kwargs.num_mutation):
-            if mutation ==0:
-                structure = s_init
-            else:
-                s_prim = s_CG.get_primitive_structure()
-                s_list, results = run_SDE_from_structures(model= chggen, s_init_list= [s_prim], ld_kwargs= ld_kwargs)
-                structure = s_list[0]
-
-
-            try:
-                prediction = model.predict_structure(structure)
-                E0_tot = prediction['e'] * structure.num_sites
-                Fmax = np.max(np.abs(prediction['f']))
-
-                atoms = AseAtomsAdaptor().get_atoms(structure)
-
-                result = chg_relaxer.relax(atoms= atoms,
-                                    fmax = 0.1,
-                                    steps = 2000,
-                                    relax_cell = True,
-                                    verbose = True,
-                                    # trajectory_path = None,
-                )
-            except:
-                print("CHGNet prediction failed")
-                E0_tot = np.nan
-                Fmax = np.nan
-                continue
-
-
-
-            s_relax = result["final_structure"]
-            toten = result['trajectory'].energies[-1]
-
-
-            ### analyze space group and refine ###
-            analyzer_init = SpacegroupAnalyzer(structure= structure, symprec= 0.15, angle_tolerance= 15)
-            analyzer = SpacegroupAnalyzer(structure= s_relax, symprec= 0.15, angle_tolerance= 15)
-
-            sym_list = [0.1, 0.2, 0.5, 0.8, 1.0, 1.5, 2.0]
-            angle_list = [10, 15, 15, 15, 20, 30, 30]
-            s_CG_list = []
-            for symprec, angle_tolerance in zip(sym_list, angle_list):
-                analyzer_CG = SpacegroupAnalyzer(structure= s_relax, symprec= symprec, angle_tolerance= angle_tolerance)
-                try:
-                    s_CG = analyzer_CG.get_conventional_standard_structure()
-                    print("symmetry: ", symprec, "angle_tolerance: ", angle_tolerance)
-                    print("CG spacegroup: ", analyzer_CG.get_space_group_symbol()) 
-                    if analyzer_CG.get_space_group_symbol() == 'P1' or analyzer_CG.get_space_group_symbol() == 'P-1':
-                        continue
-                    else:
-                        break
-                except:
-                    print("failed to analyze CG space group")
-                    continue
-
-            try:
-                print()
-                print("init spacegroup: ", analyzer_init.get_space_group_symbol())
-                print("spacegroup: ",  analyzer.get_space_group_symbol())
-
-                s_refine_init = analyzer_init.get_conventional_standard_structure()
-                symbol_init = analyzer_init.get_space_group_symbol()
-
-                s_refine = analyzer.get_conventional_standard_structure()
-                symbol_refine = analyzer.get_space_group_symbol()
-            except:
-                s_refine = s_relax.copy()
-                symbol = 'P1'
-                print("failed to analyze space group")
-
-            # if symbol == 'P1':
-            #     continue
-            
-            save_dict = {'material_id': hex(int(time.time()*1e8)),
-                         'formula': structure.composition.reduced_formula,
-                         's_refine_init_cif': str(CifWriter(s_refine_init)),
-                         'spacegroup_init': symbol_init,
-                         's_refine_relax_cif': str(CifWriter(s_refine)),
-                         'spacegroup_refine': symbol_refine,
-                         's_init_cif': str(CifWriter(structure)),
-                         's_relax_cif': str(CifWriter(s_relax)),
-                         'Fmax_chgnet': Fmax, 
-                         'E0_chgnet': E0_tot,
-                         'E_chgnet': toten,
-                         'lattice_type': type_init,
-                         'mutation': mutation
-                         }
-            row_df = pd.DataFrame([save_dict])
-            df = pd.concat([df, row_df], ignore_index=True)
- 
-            
-        CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
-        ROOT_DIR = './auto_generation/' + args.output + '/'+ CURRENT_DATE
-
-        if os.path.exists(ROOT_DIR + '/mutation_gen_summary.csv'):
-            df.to_csv(ROOT_DIR + '/mutation_gen_summary.csv', mode='a', index=False, header=False)
-        else:
-            mkdir(ROOT_DIR)
-            df.to_csv(ROOT_DIR + '/mutation_gen_summary.csv', index=False, header=True)
-
-    print("Done")

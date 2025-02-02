@@ -15,7 +15,7 @@ from chggen.common.data_utils import (
     frac_to_cart_coords, 
     min_distance_sqr_pbc,
 )
-from chggen.pl_modules.decoder import NequipDecoder, GemNetTDecoder
+from chggen.pl_modules.decoder import NequipDecoder # GemNetTDecoder
 
 
 

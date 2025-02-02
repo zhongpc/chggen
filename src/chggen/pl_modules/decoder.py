@@ -10,7 +10,7 @@ from chggen.common.data_utils import (
 )
 from chggen.pl_modules.nequip.radial_embedding import InitialEmbedding_EE, InitialEmbedding_condition
 from chggen.pl_modules.nequip.e3nn_nequip import NequIP_EE, NequIP_condition, NequIP_EF
-from chggen.pl_modules.gemnet.gemnet import GemNetT
+# from chggen.pl_modules.gemnet.gemnet import GemNetT
 
 
 class NequipDecoder(nn.Module):
