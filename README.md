@@ -1,9 +1,6 @@
 # CHGGen
 
-This is a repository for `CHGGen`: an SE(3)--equivariant diffusion model built upon `e3nn` and `NequIP` frameworks. 
-
-* For local environment sampling, inpainting-based conditional generation is used (see the related work on [ICML 2024 AI for Science Workshop](https://openreview.net/forum?id=T1mIt5exUF&noteId=T1mIt5exUF))
-* For general amorphous or small crystal structure generation, _de novo_ (unconditional) generation is used (with reversed SDE)
+This is a repository for `CHGGen`: Crystal Host-Guided Generation built upon `e3nn` and `NequIP` frameworks. 
 
 ## Installation
 
