@@ -1,8 +1,6 @@
 from chggen.common.sample_utils import CSP_Generator
 from chggen.common.data_utils import mkdir
-from chggen.common.sample_utils import get_inpaint_data_fromHost
-from chggen.common.sample_utils import get_batch_inpaint_data_fromHost
-from chggen.common.sample_utils import get_coarse_grain_framework, filter_nan_structure, compute_ewald_energy_single_structure
+from chggen.common.sample_utils import get_coarse_grain_framework, filter_nan_structure
 from chggen.common.e_hull_calculator import EHullCalculator
 
 from types import SimpleNamespace
@@ -183,10 +181,6 @@ def main(csp,
 
     #####  Relax the generated structures from Bravis lattices #####
     print("--"*5 + "Relax the generated structures from Bravis lattices" + "--"*5)
-    # s_list_relax = relax_structures(csp, s_list_Bravis)
-    # total_denovo += len(s_list_relax)
-
-    # s_list_relax_conventional_unit = refine_structure(s_list_relax, symprec= 0.15, angle_tolerance= 15)
     save_dict_list, s_list_relax = get_save_dict_list(csp, s_list_Bravis, 
                                                       type= 'denovo')
     
@@ -195,7 +189,6 @@ def main(csp,
     #####  Coarse grain the relaxed structures and get the host structures#####
     if species in chemical_formula:
         print("--"*5 + "Coarse grain the relaxed structures" + "--"*5)
-        # s_list_relax = [save_dict['structure'] for save_dict in save_dict_list]
         host_structure_list, num_intercalat_list = coarse_grain_framework(s_list_relax, 
                                                                           species_to_remove= species)
         
@@ -210,7 +203,6 @@ def main(csp,
 
         total_inpaint += len(s_list_inpaint)
         #####  Refine the inpainted structures  #####
-        # s_list_inpaint_conventional_unit = refine_structure(s_list_inpaint, symprec= 0.15, angle_tolerance= 15)
         save_dict_list_inpaint, _ = get_save_dict_list(csp, s_list_inpaint, type= 'inpaint')
 
         save_dict_list += save_dict_list_inpaint
@@ -232,14 +224,9 @@ def main(csp,
         row_df = pd.DataFrame([save_dict])
         df = pd.concat([df, row_df], ignore_index=True)
     
-    # df = df.sort_values('e_hull')
-    # df['e_hull_diff'] = df.groupby('spacegroup_asGen')['e_hull'].diff()
-    # df = df[(df['e_hull_diff'].isna()) | (df['e_hull_diff'].abs() >= 0.002)]
-
     df['e_hull_chgnet'] = df['e_hull']
 
     df = df.drop('e_hull', axis=1)
-    # df = df.drop('e_hull_diff', axis=1)
     df = df.drop('energy', axis=1)
     df = df.drop('structure', axis=1)
 
@@ -259,13 +246,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     comp_list = ["ZnSP2S5", "Zn2S2P2S5"]
-    # for n_Li in range(13,25):
-    #     for n_Si in range(1,25):
-    #         if (n_Li + n_Si <= 25) and (n_Li / n_Si >=1) and (n_Li / n_Si <= 5):
-    #             comp_str = f"Li{n_Li}Si{n_Si}"
-    #             comp_list.append(comp_str)
-    #             # print(comp_str)
-
     print(comp_list)
     
     ### Define the kwargs for the generation ###
@@ -285,9 +265,9 @@ if __name__ == "__main__":
             )
 
     ### Define the CSP file and patched_phase diagram ###
-    csp = CSP_Generator(chggen_path = "./files/cut_7_conv_3_epoch=27-val_loss=0.87.ckpt",
+    csp = CSP_Generator(chggen_path = "./PATHTO/cut_7_conv_3_epoch=27-val_loss=0.87.ckpt",
                         device= args.device)
-    csp.load_e_hull_calculator(ppd_path= "/home/zhongpc/backup_chggen/host_gen/file_trans/2023-02-07-ppd-mp.pkl.gz")
+    csp.load_e_hull_calculator(ppd_path= "/PATHTO/2023-02-07-ppd-mp.pkl.gz")
 
     CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
 
@@ -301,8 +281,6 @@ if __name__ == "__main__":
                             species = args.species, # set the same to enable inpainting, set different to use as-generated structures
                             gen_kwargs = gen_kwargs, ld_kwargs = ld_kwargs)
                     
-            # ROOT_DIR = './files/Li-Si/' + Composition(comp_str).reduced_formula
-
             chemical_formula = Composition(comp_str).formula
             chemical_formula = chemical_formula.replace(" ", "")
             ROOT_DIR = './files/Zn-P-S/' + chemical_formula
