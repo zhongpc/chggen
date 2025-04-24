@@ -27,6 +27,16 @@ pip install -e .
 
 If you find this package useful, please consider the citation:
 ```
+
+@article{chggen,
+title={{Practical approaches for crystal structure predictions with inpainting generation and universal interatomic potentials}},
+author={Zhong, Peichen and Dai, Xinzhe and Deng, Bowen and Ceder, Gerbrand and Persson, Kristin},
+journal = {arXiv preprint arXiv:2504.16893},
+URL = {https://arxiv.org/abs/2504.16893},
+author+an =	 {1=highlight,corresponding;5=corresponding}
+}
+
+
 @inproceedings{crys_inpainting_2024,
 title={Inpainting crystal structure generations with score-based denoising},
 author={Xinzhe Dai, Peichen Zhong, Bowen Deng, Yifan Chen, Gerbrand Ceder},
