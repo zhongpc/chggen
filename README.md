@@ -33,7 +33,7 @@ title={{Practical approaches for crystal structure predictions with inpainting g
 author={Zhong, Peichen and Dai, Xinzhe and Deng, Bowen and Ceder, Gerbrand and Persson, Kristin},
 journal = {arXiv preprint arXiv:2504.16893},
 URL = {https://arxiv.org/abs/2504.16893},
-author+an =	 {1=highlight,corresponding;5=corresponding}
+year={2025}
 }
 
 
