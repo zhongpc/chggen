@@ -30,7 +30,7 @@ If you find this package useful, please consider the citation:
 
 @article{chggen,
 title={{Practical approaches for crystal structure predictions with inpainting generation and universal interatomic potentials}},
-author={Zhong, Peichen and Dai, Xinzhe and Deng, Bowen and Ceder, Gerbrand and Persson, Kristin},
+author={Zhong, Peichen and Dai, Xinzhe and Deng, Bowen and Ceder, Gerbrand and Persson, Kristin A.},
 journal = {arXiv preprint arXiv:2504.16893},
 URL = {https://arxiv.org/abs/2504.16893},
 year={2025}
